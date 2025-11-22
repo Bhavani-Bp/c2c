@@ -1,0 +1,40 @@
+Create a technical diagram illustrating the architecture and data flow of the "Connect to Connect" real-time media synchronization application.
+
+**Visual Style:**
+- Clean, modern, high-contrast schematic or flowchart.
+- Use distinct colors for Client (e.g., Blue/Green) and Server (e.g., Orange/Purple) components.
+- Use arrows to show data flow direction.
+
+**Key Components to Include:**
+
+1.  **Client A (Host/User)**:
+    - Represented as a browser window or device.
+    - Contains: "Next.js Frontend", "Video Player Component", "Socket.io Client".
+    - Action: Shows an arrow labeled "Click Play/Seek" originating here.
+
+2.  **Client B (Viewer/Peer)**:
+    - Represented as a second browser window or device.
+    - Contains: "Next.js Frontend", "Video Player Component", "Socket.io Client".
+    - Action: Shows the video player updating (e.g., "Syncs to 1:30").
+
+3.  **Server (Backend)**:
+    - Central node represented as a server icon or cloud.
+    - Contains: "Node.js + Express", "Socket.io Server", "Room Manager (In-Memory)".
+    - Function: Handles "Events" and "Broadcasting".
+
+**Data Flow (The "What Happens" Loop):**
+1.  **Event Emission**: Draw an arrow from **Client A** to **Server** labeled: `emit('play', {time: 10s})` or `emit('seek', {time: 90s})`.
+2.  **Processing**: Inside the **Server**, show a small process labeled "Broadcast to Room".
+3.  **Event Reception**: Draw an arrow from **Server** to **Client B** labeled: `on('receive_play', {time: 10s})`.
+
+**Annotations/Labels:**
+- Add a legend or side note explaining:
+    - **WebSockets**: "Persistent, bidirectional connection for real-time low-latency updates."
+    - **Room Logic**: "Users are grouped by Room ID (e.g., 'room-1234') so actions only affect peers in the same room."
+    - **Sync Algorithm**: "Leader sends state -> Server relays -> Followers apply state."
+
+**Layout:**
+- Left side: Client A
+- Center: Server
+- Right side: Client B
+- Arrows connecting them in a triangular or hub-and-spoke pattern.
