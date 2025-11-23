@@ -1,75 +1,71 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import PlayerComponent from '../components/PlayerComponent';
 
-// Mock ReactPlayer
-jest.mock('react-player', () => {
-    return function MockReactPlayer({ url, ...props }: any) {
-        return (
-            <div data-testid="react-player" data-url={url} {...props}>
-                Mock Player: {url}
-            </div>
-        );
-    };
+// Mock global YT object
+const mockPlayerInstance = {
+    destroy: jest.fn(),
+    playVideo: jest.fn(),
+    pauseVideo: jest.fn(),
+    seekTo: jest.fn(),
+    getCurrentTime: jest.fn().mockReturnValue(0),
+};
+
+const mockYT = {
+    Player: jest.fn().mockImplementation(() => mockPlayerInstance),
+};
+
+beforeAll(() => {
+    window.YT = mockYT;
 });
 
 describe('PlayerComponent', () => {
-    test('shows loading state initially', () => {
-        // Mock window as undefined initially
-        Object.defineProperty(window, 'window', {
-            value: undefined,
-            writable: true
+    const defaultProps = {
+        url: 'https://www.youtube.com/watch?v=test-video-id',
+        socket: null,
+        roomId: 'test-room',
+        isPlaying: false,
+        onPlay: jest.fn(),
+        onPause: jest.fn()
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        // Reset window.YT if needed, but usually global mock is fine
+    });
+
+    test('renders container for YouTube player', () => {
+        render(<PlayerComponent {...defaultProps} />);
+        // The container is a simple div, we can find it by class or just check render doesn't crash
+        // Since we don't have a test-id on the container in the new code, let's check for loading state or similar
+        // Actually, with a valid URL and mock YT, it should try to initialize.
+    });
+
+    test('initializes YouTube player with correct video ID', async () => {
+        render(<PlayerComponent {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(mockYT.Player).toHaveBeenCalled();
         });
 
-        render(<PlayerComponent url="https://youtube.com/watch?v=test" />);
-        
-        expect(screen.getByText('Loading Player...')).toBeInTheDocument();
+        const callArgs = mockYT.Player.mock.calls[0];
+        // callArgs[0] is the DOM element
+        // callArgs[1] is the config object
+        expect(callArgs[1].videoId).toBe('test-video-id');
     });
 
-    test('renders ReactPlayer when window is available', () => {
-        // Mock window as available
-        Object.defineProperty(window, 'window', {
-            value: window,
-            writable: true
+    test('handles invalid URLs gracefully', () => {
+        render(<PlayerComponent {...defaultProps} url="invalid-url" />);
+        expect(screen.getByText('Invalid YouTube URL')).toBeInTheDocument();
+    });
+
+    test('destroys player on unmount', async () => {
+        const { unmount } = render(<PlayerComponent {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(mockYT.Player).toHaveBeenCalled();
         });
 
-        render(<PlayerComponent url="https://youtube.com/watch?v=test" />);
-        
-        const player = screen.getByTestId('react-player');
-        expect(player).toBeInTheDocument();
-        expect(player).toHaveAttribute('data-url', 'https://youtube.com/watch?v=test');
-    });
-
-    test('updates URL when prop changes', () => {
-        const { rerender } = render(<PlayerComponent url="https://youtube.com/watch?v=test1" />);
-        
-        let player = screen.getByTestId('react-player');
-        expect(player).toHaveAttribute('data-url', 'https://youtube.com/watch?v=test1');
-        
-        rerender(<PlayerComponent url="https://youtube.com/watch?v=test2" />);
-        
-        player = screen.getByTestId('react-player');
-        expect(player).toHaveAttribute('data-url', 'https://youtube.com/watch?v=test2');
-    });
-
-    test('handles empty URL', () => {
-        render(<PlayerComponent url="" />);
-        
-        const player = screen.getByTestId('react-player');
-        expect(player).toHaveAttribute('data-url', '');
-    });
-
-    test('handles various URL formats', () => {
-        const urls = [
-            'https://youtube.com/watch?v=test',
-            'https://vimeo.com/123456',
-            'https://example.com/video.mp4',
-            'https://soundcloud.com/track'
-        ];
-
-        urls.forEach(url => {
-            const { rerender } = render(<PlayerComponent url={url} />);
-            const player = screen.getByTestId('react-player');
-            expect(player).toHaveAttribute('data-url', url);
-        });
+        unmount();
+        expect(mockPlayerInstance.destroy).toHaveBeenCalled();
     });
 });

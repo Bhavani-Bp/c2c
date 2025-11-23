@@ -1,7 +1,6 @@
 "use client";
 
-import ReactPlayer from "react-player";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
 
 interface PlayerComponentProps {
@@ -13,59 +12,141 @@ interface PlayerComponentProps {
     onPause: () => void;
 }
 
-export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay, onPause }: PlayerComponentProps) {
-    const [hasWindow, setHasWindow] = useState(false);
-    const playerRef = useRef<ReactPlayer>(null);
-    const [isReceivingSync, setIsReceivingSync] = useState(false);
-    const [playerError, setPlayerError] = useState<string | null>(null);
-    const [isReady, setIsReady] = useState(false);
+declare global {
+    interface Window {
+        YT: any;
+        onYouTubeIframeAPIReady: () => void;
+    }
+}
 
+export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay, onPause }: PlayerComponentProps) {
+    const playerRef = useRef<any>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isReady, setIsReady] = useState(false);
+    const [isReceivingSync, setIsReceivingSync] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Extract Video ID from URL
+    const getVideoId = (url: string) => {
+        try {
+            if (!url) return null;
+            const urlObj = new URL(url);
+            if (urlObj.hostname.includes('youtube.com')) {
+                return urlObj.searchParams.get('v');
+            } else if (urlObj.hostname.includes('youtu.be')) {
+                return urlObj.pathname.slice(1);
+            }
+            return null;
+        } catch (e) {
+            return null;
+        }
+    };
+
+    // Load YouTube API
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            setHasWindow(true);
+        if (!window.YT) {
+            const tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+            window.onYouTubeIframeAPIReady = () => {
+                console.log('✅ YouTube API Ready');
+                // Trigger re-render or initialization if needed
+            };
         }
     }, []);
 
+    // Initialize Player when URL changes
     useEffect(() => {
-        setIsReady(false);
-        setPlayerError(null);
+        const videoId = getVideoId(url);
+        if (!videoId) {
+            if (url) setError('Invalid YouTube URL');
+            return;
+        }
+
+        setError(null);
+
+        const initPlayer = () => {
+            if (!window.YT || !window.YT.Player) {
+                setTimeout(initPlayer, 100);
+                return;
+            }
+
+            // Destroy existing player if any
+            if (playerRef.current) {
+                playerRef.current.destroy();
+            }
+
+            console.log('🎬 Initializing Native Player for:', videoId);
+
+            playerRef.current = new window.YT.Player(containerRef.current, {
+                height: '100%',
+                width: '100%',
+                videoId: videoId,
+                playerVars: {
+                    'playsinline': 1,
+                    'controls': 1,
+                    'modestbranding': 1,
+                    'rel': 0,
+                    'origin': typeof window !== 'undefined' ? window.location.origin : undefined
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange,
+                    'onError': onPlayerError
+                }
+            });
+        };
+
+        initPlayer();
+
+        return () => {
+            if (playerRef.current && playerRef.current.destroy) {
+                playerRef.current.destroy();
+            }
+        };
     }, [url]);
 
+    // Socket Sync Listeners
     useEffect(() => {
         if (!socket) return;
 
         socket.on('receive_video_play', (data) => {
+            console.log('Received play sync:', data);
             setIsReceivingSync(true);
-            const videoEl = document.querySelector('video');
-            if (videoEl) {
-                videoEl.currentTime = data.currentTime;
-                videoEl.play();
+            if (playerRef.current && playerRef.current.playVideo) {
+                const current = playerRef.current.getCurrentTime();
+                if (Math.abs(current - data.currentTime) > 1.0) {
+                    playerRef.current.seekTo(data.currentTime, true);
+                }
+                playerRef.current.playVideo();
             }
-            // Also sync ReactPlayer if active
-            if (playerRef.current) {
-                // ReactPlayer might not expose the video element directly in all cases, 
-                // but we can try to sync internal state if needed.
-                // For now, relying on the seek/play events is usually enough.
-            }
-            setTimeout(() => setIsReceivingSync(false), 100);
+            onPlay();
+            setTimeout(() => setIsReceivingSync(false), 1000);
         });
 
         socket.on('receive_video_pause', (data) => {
+            console.log('Received pause sync:', data);
             setIsReceivingSync(true);
-            const videoEl = document.querySelector('video');
-            if (videoEl) {
-                videoEl.currentTime = data.currentTime;
-                videoEl.pause();
+            if (playerRef.current && playerRef.current.pauseVideo) {
+                const current = playerRef.current.getCurrentTime();
+                if (Math.abs(current - data.currentTime) > 1.0) {
+                    playerRef.current.seekTo(data.currentTime, true);
+                }
+                playerRef.current.pauseVideo();
             }
-            setTimeout(() => setIsReceivingSync(false), 100);
+            onPause();
+            setTimeout(() => setIsReceivingSync(false), 1000);
         });
 
         socket.on('receive_video_seek', (data) => {
+            console.log('Received seek sync:', data);
             setIsReceivingSync(true);
-            if (playerRef.current) {
-                playerRef.current.seekTo(data.currentTime);
+            if (playerRef.current && playerRef.current.seekTo) {
+                playerRef.current.seekTo(data.currentTime, true);
             }
-            setTimeout(() => setIsReceivingSync(false), 100);
+            setTimeout(() => setIsReceivingSync(false), 1000);
         });
 
         return () => {
@@ -73,104 +154,58 @@ export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay
             socket.off('receive_video_pause');
             socket.off('receive_video_seek');
         };
-    }, [socket]);
+    }, [socket, onPlay, onPause]);
 
-    const handlePlay = () => {
-        if (!isReceivingSync && socket && playerRef.current && isReady) {
-            try {
+    const onPlayerReady = (event: any) => {
+        console.log('✅ Player Ready Event');
+        setIsReady(true);
+    };
+
+    const onPlayerStateChange = (event: any) => {
+        if (isReceivingSync) return;
+
+        // YT.PlayerState.PLAYING = 1
+        // YT.PlayerState.PAUSED = 2
+        // YT.PlayerState.BUFFERING = 3
+
+        if (event.data === 1) { // PLAYING
+            console.log('▶️ Native Play Detected');
+            if (socket && playerRef.current) {
                 const currentTime = playerRef.current.getCurrentTime();
                 socket.emit('video_play', { room: roomId, currentTime });
                 onPlay();
-            } catch (error) {
-                console.error('Error handling play:', error);
             }
-        }
-    };
-
-    const handlePause = () => {
-        if (!isReceivingSync && socket && playerRef.current && isReady) {
-            try {
+        } else if (event.data === 2) { // PAUSED
+            console.log('⏸️ Native Pause Detected');
+            if (socket && playerRef.current) {
                 const currentTime = playerRef.current.getCurrentTime();
                 socket.emit('video_pause', { room: roomId, currentTime });
                 onPause();
-            } catch (error) {
-                console.error('Error handling pause:', error);
             }
         }
     };
 
-    const handleReady = () => {
-        console.log('✅ Player ready with URL:', url);
-        setIsReady(true);
-        setPlayerError(null);
+    const onPlayerError = (event: any) => {
+        console.error('❌ Native Player Error:', event.data);
+        setError('Video playback error. Code: ' + event.data);
     };
-
-    const handleError = (error: any) => {
-        console.error('❌ ReactPlayer error:', error);
-        console.error('❌ Failed URL:', url);
-        setPlayerError('Failed to load video. Please check the URL and try again.');
-        setIsReady(false);
-    };
-
-    const handleSeek = (seconds: number) => {
-        if (!isReceivingSync && socket && isReady) {
-            console.log('⏩ Seeked to:', seconds);
-            socket.emit('video_seek', { room: roomId, currentTime: seconds });
-        }
-    };
-
-    if (!hasWindow) {
-        return (
-            <div className="w-full h-full flex items-center justify-center bg-black text-zinc-500">
-                <div className="text-center">
-                    <div>Loading Player...</div>
-                    <div className="text-xs mt-2">URL: {url}</div>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-800">
-            {/* Debug overlay removed for production feel, can be re-enabled if needed */}
-
-            {playerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
-                    <div className="text-center p-6">
-                        <div className="text-red-400 text-sm mb-2">⚠️ Video Error</div>
-                        <div className="text-zinc-300 text-xs">{playerError}</div>
-                    </div>
-                </div>
-            )}
-            {!isReady && !playerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-                    <div className="text-center">
-                        <div className="text-zinc-400 text-sm mb-2">Loading video...</div>
-                        <div className="text-zinc-600 text-xs max-w-md truncate">{url}</div>
-                    </div>
+            {error && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
+                    <div className="text-red-400 text-sm">{error}</div>
                 </div>
             )}
 
-            <ReactPlayer
-                key={url}
-                ref={playerRef}
-                url={url}
-                width="100%"
-                height="100%"
-                controls={true}
-                playing={isPlaying}
-                onPlay={handlePlay}
-                onPause={handlePause}
-                onSeek={handleSeek}
-                onReady={handleReady}
-                onError={handleError}
-                style={{ position: "absolute", top: 0, left: 0 }}
-                config={{
-                    youtube: {
-                        playerVars: { showinfo: 1 }
-                    }
-                }}
-            />
+            {/* Container for YouTube IFrame */}
+            <div ref={containerRef} className="w-full h-full" />
+
+            {!isReady && !error && url && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
+                    <div className="text-zinc-400 text-sm">Loading YouTube Player...</div>
+                </div>
+            )}
         </div>
     );
 }

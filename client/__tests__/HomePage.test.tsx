@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
 import Home from '../app/page';
 
@@ -6,6 +6,9 @@ import Home from '../app/page';
 jest.mock('next/navigation', () => ({
     useRouter: jest.fn(),
 }));
+
+// Mock fetch for API calls
+global.fetch = jest.fn();
 
 describe('Home Page', () => {
     const mockPush = jest.fn();
@@ -15,63 +18,84 @@ describe('Home Page', () => {
             push: mockPush,
         });
         mockPush.mockClear();
+        (global.fetch as jest.Mock).mockClear();
     });
 
     test('renders main elements', () => {
         render(<Home />);
         
         expect(screen.getByText('Connect to Connect')).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Enter room ID')).toBeInTheDocument();
-        expect(screen.getByText('Join Room')).toBeInTheDocument();
+        expect(screen.getByText('Create New Room')).toBeInTheDocument();
+        expect(screen.getByText('Join Existing Room')).toBeInTheDocument();
     });
 
-    test('generates random room ID when create button clicked', () => {
+    test('shows create room form when create button clicked', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            json: async () => ({ success: true, roomId: 'ABC123' })
+        });
+
         render(<Home />);
         
-        const createButton = screen.getByTitle('Generate Random Room ID');
-        const roomInput = screen.getByPlaceholderText('Enter room ID') as HTMLInputElement;
-        
+        const createButton = screen.getByText('Create New Room');
         fireEvent.click(createButton);
         
-        expect(roomInput.value).toHaveLength(6);
-        expect(roomInput.value).toMatch(/^[a-z0-9]+$/);
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument();
+            expect(screen.getByPlaceholderText('Enter your email')).toBeInTheDocument();
+        });
     });
 
-    test('prevents form submission with empty fields', () => {
-        render(<Home />);
-        
-        const joinButton = screen.getByText('Join Room');
-        fireEvent.click(joinButton);
-        
-        expect(mockPush).not.toHaveBeenCalled();
-    });
+    test('creates room with valid inputs', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            json: async () => ({ success: true, roomId: 'ABC123' })
+        });
 
-    test('navigates to room with valid inputs', () => {
         render(<Home />);
         
+        const createButton = screen.getByText('Create New Room');
+        fireEvent.click(createButton);
+        
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument();
+        });
+
         const nameInput = screen.getByPlaceholderText('Enter your name');
-        const roomInput = screen.getByPlaceholderText('Enter room ID');
-        const joinButton = screen.getByText('Join Room');
+        const emailInput = screen.getByPlaceholderText('Enter your email');
+        const submitButton = screen.getByText('Create Room');
         
         fireEvent.change(nameInput, { target: { value: 'TestUser' } });
-        fireEvent.change(roomInput, { target: { value: 'room123' } });
-        fireEvent.click(joinButton);
+        fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+        fireEvent.click(submitButton);
         
-        expect(mockPush).toHaveBeenCalledWith('/room/room123?name=TestUser');
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith(
+                expect.stringContaining('/api/create-room'),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: expect.stringContaining('TestUser')
+                })
+            );
+        });
     });
 
-    test('handles special characters in display name', () => {
+    test('prevents form submission with empty fields', async () => {
         render(<Home />);
         
-        const nameInput = screen.getByPlaceholderText('Enter your name');
-        const roomInput = screen.getByPlaceholderText('Enter room ID');
-        const joinButton = screen.getByText('Join Room');
+        const createButton = screen.getByText('Create New Room');
+        fireEvent.click(createButton);
         
-        fireEvent.change(nameInput, { target: { value: 'Test User @#$' } });
-        fireEvent.change(roomInput, { target: { value: 'room123' } });
-        fireEvent.click(joinButton);
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument();
+        });
+
+        const submitButton = screen.getByText('Create Room');
+        expect(submitButton).toBeDisabled();
+    });
+
+    test('navigates to join page when join button clicked', () => {
+        render(<Home />);
         
-        expect(mockPush).toHaveBeenCalledWith('/room/room123?name=Test%20User%20%40%23%24');
+        const joinLink = screen.getByText('Join Existing Room').closest('a');
+        expect(joinLink).toHaveAttribute('href', '/join');
     });
 });
