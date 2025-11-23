@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
+import SyncedPlayer from "./SyncedPlayer";
 import SimplePeer from "simple-peer";
 
 interface Message {
@@ -27,6 +28,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [currentTime, setCurrentTime] = useState(0);
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
+    const [hostId, setHostId] = useState<string | null>(null);
+    const [isHost, setIsHost] = useState(false);
     const [syncStatus, setSyncStatus] = useState<string>('');
     const [isSharingAudio, setIsSharingAudio] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -68,9 +71,12 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             setMessageList((list) => [...list, data]);
         });
 
-        // Listen for room users updates
-        socketInstance.on('room_users', (users) => {
-            setRoomUsers(users);
+        // Listen for room users updates with host info
+        socketInstance.on('room_users', (data: { users: any[], host: string | null }) => {
+            setRoomUsers(data.users);
+            setHostId(data.host);
+            setIsHost(data.host === socketInstance.id);
+            console.log(`👥 Room users updated: ${data.users.length}, host: ${data.host}, isHost: ${data.host === socketInstance.id}`);
         });
 
         // Listen for Video Sync Events
@@ -262,68 +268,13 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         <div className="flex flex-col lg:flex-row h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
             {/* Left Side: Video Player Area */}
             <div className="flex-1 flex flex-col bg-black border-r border-zinc-800 relative">
-                {/* URL Input Bar */}
-                <div className="p-4 bg-zinc-900/50 border-b border-zinc-800 flex gap-2 items-center">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                        <LinkIcon className="h-5 w-5 text-indigo-400" />
-                    </div>
-                    <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
-                        <input
-                            type="text"
-                            placeholder="Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                            value={inputUrl}
-                            onChange={(e) => setInputUrl(e.target.value)}
-                            className="flex-1 bg-zinc-950 border border-zinc-700 text-zinc-100 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-zinc-600"
-                        />
-                        <button
-                            type="submit"
-                            aria-label="Load video"
-                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors border border-zinc-700 text-sm font-medium"
-                        >
-                            Load
-                        </button>
-                    </form>
-                    <button
-                        onClick={handleShareAudio}
-                        disabled={isSharingAudio}
-                        className={`px-4 py-2 rounded-xl transition-colors border text-sm font-medium ${isSharingAudio
-                            ? 'bg-red-500/10 border-red-500/50 text-red-400'
-                            : 'bg-indigo-600 hover:bg-indigo-500 border-transparent text-white'
-                            }`}
-                    >
-                        {isSharingAudio ? 'Sharing Audio...' : 'Share Audio'}
-                    </button>
-                </div>
-
-                {/* Player Container */}
-                <div className="flex-1 p-4 flex items-center justify-center">
-                    <div className="w-full h-full max-h-[80vh] aspect-video">
-                        {url ? (
-                            <div className="relative w-full h-full">
-                                <PlayerComponent
-                                    url={url}
-                                    socket={socket}
-                                    roomId={roomId}
-                                    isPlaying={isPlaying}
-                                    onPlay={handlePlay}
-                                    onPause={handlePause}
-                                />
-                                {/* Debug URL display */}
-                                <div className="absolute top-2 right-2 bg-black/70 text-white text-xs p-2 rounded max-w-xs truncate">
-                                    {url}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="w-full h-full bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800">
-                                <div className="text-center text-zinc-500">
-                                    <div className="text-lg mb-2">🎬</div>
-                                    <div className="text-sm">No video loaded</div>
-                                    <div className="text-xs mt-1">Paste a video URL above to get started</div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                {/* Synchronized Player */}
+                <SyncedPlayer
+                    roomId={roomId}
+                    userName={userName}
+                    isHost={isHost}
+                    socket={socket}
+                />
 
                 {/* Enhanced Room Info Overlay */}
                 <div className="absolute bottom-4 left-4 space-y-2">
