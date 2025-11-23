@@ -43,6 +43,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         socketInstance.on('connect', () => {
             setConnectionStatus('connected');
             setSyncStatus('Connected to room');
+            // Join Room after connection is established
+            socketInstance.emit("join_room", { room: roomId, name: userName });
         });
 
         socketInstance.on('disconnect', () => {
@@ -54,9 +56,6 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             setConnectionStatus('disconnected');
             setSyncStatus('Connection failed');
         });
-
-        // Join Room
-        socketInstance.emit("join_room", { room: roomId, name: userName });
 
         // Listen for Messages
         socketInstance.on("receive_message", (data: Message) => {
