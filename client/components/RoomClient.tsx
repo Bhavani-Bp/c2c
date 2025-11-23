@@ -35,8 +35,14 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const streamRef = useRef<MediaStream | null>(null);
 
     useEffect(() => {
-        // Initialize Socket Connection
-        const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001");
+        // Initialize Socket Connection with WebSocket transport
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+        const socketInstance = io(socketUrl, {
+            transports: ["websocket", "polling"], // Try WebSocket first, fallback to polling
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        });
         setSocket(socketInstance);
 
         // Connection status handlers
