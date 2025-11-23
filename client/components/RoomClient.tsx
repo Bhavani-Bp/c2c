@@ -18,8 +18,12 @@ interface RoomClientProps {
     userName: string;
 }
 
+// Global socket to prevent multiple initializations during HMR
+let globalSocket: Socket | null = null;
+
 export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [socket, setSocket] = useState<Socket | null>(null);
+    const [socketReady, setSocketReady] = useState(false);
     const [currentMessage, setCurrentMessage] = useState("");
     const [messageList, setMessageList] = useState<Message[]>([]);
     const [url, setUrl] = useState(""); // Start with empty URL
@@ -30,6 +34,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
     const [hostId, setHostId] = useState<string | null>(null);
     const [isHost, setIsHost] = useState(false);
+    const [peers, setPeers] = useState<any[]>([]);
     const [syncStatus, setSyncStatus] = useState<string>('');
     const [isSharingAudio, setIsSharingAudio] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -37,60 +42,54 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const peersRef = useRef<any[]>([]);
     const streamRef = useRef<MediaStream | null>(null);
 
+    // STEP 1: Completely restore socket initialization
     useEffect(() => {
-        // Runtime validation for NEXT_PUBLIC_SOCKET_URL
+        // STEP 3: Debug log before initialization
+        console.log("🚨 Initializing socket with URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
+
+        if (typeof window === "undefined") return;
+
         const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-
-        console.log('🚨 SOCKET URL:', socketUrl);
-
         if (!socketUrl) {
-            console.error('❌ NEXT_PUBLIC_SOCKET_URL is not defined!');
-            console.error('Please set it in Vercel Dashboard:');
-            console.error('Settings → Environment Variables → Add:');
-            console.error('NEXT_PUBLIC_SOCKET_URL = https://your-ngrok-url.ngrok-free.dev');
-            setConnectionStatus('disconnected');
-            setSyncStatus('❌ Missing NEXT_PUBLIC_SOCKET_URL environment variable');
+            console.error("Missing NEXT_PUBLIC_SOCKET_URL");
             return;
         }
 
-        // Initialize Socket Connection with WebSocket transport
-        const socketInstance = io(socketUrl, {
-            transports: ["websocket", "polling"], // Try WebSocket first, fallback to polling
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
-        });
-        setSocket(socketInstance);
+        // Use global socket to prevent multiple initializations
+        if (!globalSocket) {
+            globalSocket = io(socketUrl, { transports: ["websocket"] });
+        }
 
-        // Connection status handlers
-        socketInstance.on('connect', () => {
-            setConnectionStatus('connected');
-            setSyncStatus('Connected to room');
-            // Join Room after connection is established
-            socketInstance.emit("join_room", { room: roomId, name: userName });
+        setSocket(globalSocket);
+
+        globalSocket.on("connect", () => {
+            console.log("✅ Socket connected:", globalSocket?.id);
+            setSocketReady(true);
+            globalSocket?.emit("join_room", { room: roomId, name: userName });
         });
 
-        socketInstance.on('disconnect', () => {
-            setConnectionStatus('disconnected');
-            setSyncStatus('Disconnected from room');
-        });
-
-        socketInstance.on('connect_error', () => {
-            setConnectionStatus('disconnected');
-            setSyncStatus('Connection failed');
-        });
-
-        // Listen for Messages
-        socketInstance.on("receive_message", (data: Message) => {
-            setMessageList((list) => [...list, data]);
+        globalSocket.on("user_list", ({ users }: { users: any[] }) => {
+            console.log("👥 Received user_list:", users);
+            const safeUsers = Array.isArray(users) ? users : [];
+            setPeers(safeUsers);
+            setRoomUsers(safeUsers);
+            setIsHost(safeUsers?.[0] === globalSocket?.id);
         });
 
         // Listen for room users updates with host info
-        socketInstance.on('room_users', (data: { users: any[], host: string | null }) => {
-            setRoomUsers(data.users);
+        globalSocket.on('room_users', (data: { users: any[], host: string | null }) => {
+            console.log("👥 Received room_users:", data);
+            const safeUsers = Array.isArray(data?.users) ? data.users : [];
+            setRoomUsers(safeUsers);
+            setPeers(safeUsers);
             setHostId(data.host);
-            setIsHost(data.host === socketInstance.id);
-            console.log(`👥 Room users updated: ${data.users.length}, host: ${data.host}, isHost: ${data.host === socketInstance.id}`);
+            setIsHost(data.host === globalSocket?.id);
+            console.log(`👥 Room users updated: ${safeUsers.length}, host: ${data.host}, isHost: ${data.host === globalSocket?.id}`);
+        });
+
+        // Listen for Messages
+        globalSocket.on("receive_message", (data: Message) => {
+            setMessageList((list) => [...list, data]);
         });
 
         // Listen for Video Sync Events
@@ -278,15 +277,14 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
 
 
-    // STEP 1: Guard rendering - do not render SyncedPlayer until socket ready
-    if (!socket || !roomId || !userName) {
-        console.warn("⏳ Waiting for required props before rendering SyncedPlayer...");
+    // STEP 2: Add a strict gate so SyncedPlayer NEVER renders first
+    if (!socketReady || !socket) {
         return (
             <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
                 <div className="text-center">
                     <div className="text-4xl mb-4">⏳</div>
-                    <div className="text-lg">Connecting to room...</div>
-                    <div className="text-sm text-zinc-500 mt-2">Please wait</div>
+                    <div className="text-lg">Connecting...</div>
+                    <div className="text-sm text-zinc-500 mt-2">Establishing connection to server</div>
                 </div>
             </div>
         );
