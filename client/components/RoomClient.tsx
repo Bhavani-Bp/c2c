@@ -2,10 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
-import PlayerComponent from "./PlayerComponent";
+import { Send, MessageSquare } from "lucide-react";
 import SyncedPlayer from "./SyncedPlayer";
-import SimplePeer from "simple-peer";
 
 interface Message {
     message: string;
@@ -34,13 +32,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
     const [hostId, setHostId] = useState<string | null>(null);
     const [isHost, setIsHost] = useState(false);
-    const [peers, setPeers] = useState<any[]>([]);
     const [syncStatus, setSyncStatus] = useState<string>('');
-    const [isSharingAudio, setIsSharingAudio] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const userAudioRef = useRef<HTMLAudioElement>(null);
-    const peersRef = useRef<any[]>([]);
-    const streamRef = useRef<MediaStream | null>(null);
 
     // STEP 1: Completely restore socket initialization
     useEffect(() => {
@@ -71,7 +64,6 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         globalSocket.on("user_list", ({ users }: { users: any[] }) => {
             console.log("👥 Received user_list:", users);
             const safeUsers = Array.isArray(users) ? users : [];
-            setPeers(safeUsers);
             setRoomUsers(safeUsers);
             setIsHost(safeUsers?.[0] === globalSocket?.id);
         });
@@ -81,7 +73,6 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             console.log("👥 Received room_users:", data);
             const safeUsers = Array.isArray(data?.users) ? data.users : [];
             setRoomUsers(safeUsers);
-            setPeers(safeUsers);
             setHostId(data.host);
             setIsHost(data.host === globalSocket?.id);
             console.log(`👥 Room users updated: ${safeUsers.length}, host: ${data.host}, isHost: ${data.host === globalSocket?.id}`);
@@ -112,54 +103,12 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             }
         });
 
-        // WebRTC Signaling for Audio Sharing
-        globalSocket.on("callUser", (data) => {
-            console.log("Receiving call from:", data.from);
-            const peer = new SimplePeer({
-                initiator: false,
-                trickle: false,
-            });
-
-            peer.on("signal", (signal) => {
-                globalSocket.emit("answerCall", { signal, to: data.from });
-            });
-
-            peer.on("stream", (stream) => {
-                console.log("Receiving audio stream");
-                if (userAudioRef.current) {
-                    userAudioRef.current.srcObject = stream;
-                    userAudioRef.current.play().catch(e => console.error("Error playing audio:", e));
-                }
-            });
-
-            peer.signal(data.signal);
-            peersRef.current.push({
-                peerID: data.from,
-                peer,
-            });
-        });
-
-        globalSocket.on("callAccepted", (data) => {
-            console.log("Call accepted from:", data.from);
-            const item = peersRef.current.find(p => p.peerID === data.from);
-            if (item) {
-                item.peer.signal(data.signal);
-            }
-        });
-
-        // Better WebRTC Handling with Map
-        globalSocket.on("ice-candidate", (candidate) => {
-            // Handle ICE candidates if using trickle: true
-        });
-
         // Request current video state for late joiners
         globalSocket.emit("get_video_state", { room: roomId });
 
         // Cleanup
         return () => {
-            globalSocket.disconnect();
-            streamRef.current?.getTracks().forEach(track => track.stop());
-            peersRef.current.forEach(p => p.peer.destroy());
+            globalSocket?.disconnect();
         };
     }, [roomId, userName]);
 
@@ -210,72 +159,6 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             setTimeout(() => setSyncStatus(''), 2000);
         }
     };
-
-    const handlePlay = () => {
-        setIsPlaying(true);
-    };
-
-    const handlePause = () => {
-        setIsPlaying(false);
-    };
-
-    const handleShareAudio = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true, // Required for getDisplayMedia, but we can ignore the video track
-                audio: true
-            });
-
-            streamRef.current = stream;
-            setIsSharingAudio(true);
-
-            // Notify server to call all users
-            // In a real app, we would get a list of users and call each one.
-            // For this MVP, we rely on the server to broadcast or we iterate known users.
-            // Since we don't have a full peer mesh management here, let's just emit a "startCall" to the room
-            // and let the server facilitate.
-            // Actually, the server 'callUser' expects a specific target.
-            // We need to iterate over `roomUsers` and call each one.
-
-            roomUsers.forEach(user => {
-                if (user.id === socket?.id) return;
-
-                const peer = new SimplePeer({
-                    initiator: true,
-                    trickle: false,
-                    stream: stream,
-                });
-
-                peer.on("signal", (signal) => {
-                    socket?.emit("callUser", {
-                        userToCall: user.id,
-                        signalData: signal,
-                        from: socket.id,
-                        name: userName,
-                    });
-                });
-
-                peersRef.current.push({
-                    peerID: user.id,
-                    peer,
-                });
-            });
-
-            // Handle stream stop (user clicks "Stop Sharing" in browser UI)
-            stream.getVideoTracks()[0].onended = () => {
-                setIsSharingAudio(false);
-                stream.getTracks().forEach(track => track.stop());
-                peersRef.current.forEach(p => p.peer.destroy());
-                peersRef.current = [];
-                // Notify others? (Optional for MVP, connection close handles it)
-            };
-
-        } catch (error) {
-            console.error("Error sharing audio:", error);
-        }
-    };
-
-
 
     // STEP 2: Add a strict gate so SyncedPlayer NEVER renders first
     if (!socketReady || !socket) {
@@ -405,8 +288,6 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     </form>
                 </div>
             </div>
-            {/* Hidden Audio Element for WebRTC Stream */}
-            <audio ref={userAudioRef} autoPlay hidden />
         </div>
     );
 }
