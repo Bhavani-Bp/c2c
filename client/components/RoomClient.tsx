@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
+import SimplePeer from "simple-peer";
 
 interface Message {
     message: string;
@@ -25,9 +26,13 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-    const [roomUsers, setRoomUsers] = useState<Array<{id: string, name: string}>>([]);
+    const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
     const [syncStatus, setSyncStatus] = useState<string>('');
+    const [isSharingAudio, setIsSharingAudio] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const userAudioRef = useRef<HTMLAudioElement>(null);
+    const peersRef = useRef<any[]>([]);
+    const streamRef = useRef<MediaStream | null>(null);
 
     useEffect(() => {
         // Initialize Socket Connection
@@ -83,12 +88,54 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             }
         });
 
+        // WebRTC Signaling for Audio Sharing
+        socketInstance.on("callUser", (data) => {
+            console.log("Receiving call from:", data.from);
+            const peer = new SimplePeer({
+                initiator: false,
+                trickle: false,
+            });
+
+            peer.on("signal", (signal) => {
+                socketInstance.emit("answerCall", { signal, to: data.from });
+            });
+
+            peer.on("stream", (stream) => {
+                console.log("Receiving audio stream");
+                if (userAudioRef.current) {
+                    userAudioRef.current.srcObject = stream;
+                    userAudioRef.current.play().catch(e => console.error("Error playing audio:", e));
+                }
+            });
+
+            peer.signal(data.signal);
+            peersRef.current.push({
+                peerID: data.from,
+                peer,
+            });
+        });
+
+        socketInstance.on("callAccepted", (data) => {
+            console.log("Call accepted from:", data.from);
+            const item = peersRef.current.find(p => p.peerID === data.from);
+            if (item) {
+                item.peer.signal(data.signal);
+            }
+        });
+
+        // Better WebRTC Handling with Map
+        socketInstance.on("ice-candidate", (candidate) => {
+            // Handle ICE candidates if using trickle: true
+        });
+
         // Request current video state for late joiners
         socketInstance.emit("get_video_state", { room: roomId });
 
         // Cleanup
         return () => {
             socketInstance.disconnect();
+            streamRef.current?.getTracks().forEach(track => track.stop());
+            peersRef.current.forEach(p => p.peer.destroy());
         };
     }, [roomId, userName]);
 
@@ -117,25 +164,25 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         e.preventDefault();
         if (inputUrl.trim() && socket) {
             let validUrl = inputUrl.trim();
-            
+
             // Handle different URL formats
             if (!validUrl.startsWith('http')) {
                 validUrl = `https://${validUrl}`;
             }
-            
+
             // Convert YouTube share URLs to watch URLs
             if (validUrl.includes('youtu.be/')) {
                 const videoId = validUrl.split('youtu.be/')[1].split('?')[0];
                 validUrl = `https://www.youtube.com/watch?v=${videoId}`;
             }
-            
+
             console.log('Setting video URL:', validUrl);
             setUrl(validUrl);
             setInputUrl("");
             setIsPlaying(false);
             setSyncStatus('Loading new video...');
             socket.emit("video_url_change", { room: roomId, url: validUrl });
-            
+
             setTimeout(() => setSyncStatus(''), 2000);
         }
     };
@@ -146,6 +193,62 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
     const handlePause = () => {
         setIsPlaying(false);
+    };
+
+    const handleShareAudio = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true, // Required for getDisplayMedia, but we can ignore the video track
+                audio: true
+            });
+
+            streamRef.current = stream;
+            setIsSharingAudio(true);
+
+            // Notify server to call all users
+            // In a real app, we would get a list of users and call each one.
+            // For this MVP, we rely on the server to broadcast or we iterate known users.
+            // Since we don't have a full peer mesh management here, let's just emit a "startCall" to the room
+            // and let the server facilitate.
+            // Actually, the server 'callUser' expects a specific target.
+            // We need to iterate over `roomUsers` and call each one.
+
+            roomUsers.forEach(user => {
+                if (user.id === socket?.id) return;
+
+                const peer = new SimplePeer({
+                    initiator: true,
+                    trickle: false,
+                    stream: stream,
+                });
+
+                peer.on("signal", (signal) => {
+                    socket?.emit("callUser", {
+                        userToCall: user.id,
+                        signalData: signal,
+                        from: socket.id,
+                        name: userName,
+                    });
+                });
+
+                peersRef.current.push({
+                    peerID: user.id,
+                    peer,
+                });
+            });
+
+            // Handle stream stop (user clicks "Stop Sharing" in browser UI)
+            stream.getVideoTracks()[0].onended = () => {
+                setIsSharingAudio(false);
+                stream.getTracks().forEach(track => track.stop());
+                peersRef.current.forEach(p => p.peer.destroy());
+                peersRef.current = [];
+                // Notify others? (Optional for MVP, connection close handles it)
+            };
+
+        } catch (error) {
+            console.error("Error sharing audio:", error);
+        }
     };
 
 
@@ -169,11 +272,22 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                         />
                         <button
                             type="submit"
+                            aria-label="Load video"
                             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors border border-zinc-700 text-sm font-medium"
                         >
                             Load
                         </button>
                     </form>
+                    <button
+                        onClick={handleShareAudio}
+                        disabled={isSharingAudio}
+                        className={`px-4 py-2 rounded-xl transition-colors border text-sm font-medium ${isSharingAudio
+                            ? 'bg-red-500/10 border-red-500/50 text-red-400'
+                            : 'bg-indigo-600 hover:bg-indigo-500 border-transparent text-white'
+                            }`}
+                    >
+                        {isSharingAudio ? 'Sharing Audio...' : 'Share Audio'}
+                    </button>
                 </div>
 
                 {/* Player Container */}
@@ -181,8 +295,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     <div className="w-full h-full max-h-[80vh] aspect-video">
                         {url ? (
                             <div className="relative w-full h-full">
-                                <PlayerComponent 
-                                    url={url} 
+                                <PlayerComponent
+                                    url={url}
                                     socket={socket}
                                     roomId={roomId}
                                     isPlaying={isPlaying}
@@ -212,15 +326,14 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                         Room: <span className="text-indigo-400 font-mono">{roomId}</span>
                     </div>
                     <div className="p-2 bg-zinc-900/80 backdrop-blur-sm rounded-lg border border-zinc-800 text-xs flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${
-                            connectionStatus === 'connected' ? 'bg-green-500' :
+                        <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' :
                             connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-                            'bg-red-500'
-                        }`}></div>
+                                'bg-red-500'
+                            }`}></div>
                         <span className="text-zinc-400">
                             {connectionStatus === 'connected' ? `${roomUsers.length} users` :
-                             connectionStatus === 'connecting' ? 'Connecting...' :
-                             'Disconnected'}
+                                connectionStatus === 'connecting' ? 'Connecting...' :
+                                    'Disconnected'}
                         </span>
                     </div>
                     {syncStatus && (
@@ -241,9 +354,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     <div>
                         <h3 className="font-semibold text-zinc-100">Live Chat</h3>
                         <p className="text-xs text-zinc-500 flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${
-                                connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-                            }`}></span>
+                            <span className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                                }`}></span>
                             {connectionStatus === 'connected' ? `${roomUsers.length} online` : 'Offline'}
                         </p>
                     </div>
@@ -303,6 +415,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                         <button
                             type="submit"
                             disabled={!currentMessage.trim()}
+                            aria-label="Send message"
                             className="p-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white rounded-xl transition-colors shadow-lg shadow-indigo-500/20"
                         >
                             <Send className="h-5 w-5" />
@@ -310,6 +423,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     </form>
                 </div>
             </div>
+            {/* Hidden Audio Element for WebRTC Stream */}
+            <audio ref={userAudioRef} autoPlay hidden />
         </div>
     );
 }
