@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
-import SimplePeer from "simple-peer";
+
 
 interface Message {
     message: string;
@@ -28,11 +28,9 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
     const [syncStatus, setSyncStatus] = useState<string>('');
-    const [isSharingAudio, setIsSharingAudio] = useState(false);
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const userAudioRef = useRef<HTMLAudioElement>(null);
-    const peersRef = useRef<any[]>([]);
-    const streamRef = useRef<MediaStream | null>(null);
+
 
     useEffect(() => {
         // Initialize Socket Connection with WebSocket transport
@@ -93,45 +91,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             }
         });
 
-        // WebRTC Signaling for Audio Sharing
-        socketInstance.on("callUser", (data) => {
-            console.log("Receiving call from:", data.from);
-            const peer = new SimplePeer({
-                initiator: false,
-                trickle: false,
-            });
 
-            peer.on("signal", (signal) => {
-                socketInstance.emit("answerCall", { signal, to: data.from });
-            });
-
-            peer.on("stream", (stream) => {
-                console.log("Receiving audio stream");
-                if (userAudioRef.current) {
-                    userAudioRef.current.srcObject = stream;
-                    userAudioRef.current.play().catch(e => console.error("Error playing audio:", e));
-                }
-            });
-
-            peer.signal(data.signal);
-            peersRef.current.push({
-                peerID: data.from,
-                peer,
-            });
-        });
-
-        socketInstance.on("callAccepted", (data) => {
-            console.log("Call accepted from:", data.from);
-            const item = peersRef.current.find(p => p.peerID === data.from);
-            if (item) {
-                item.peer.signal(data.signal);
-            }
-        });
-
-        // Better WebRTC Handling with Map
-        socketInstance.on("ice-candidate", (candidate) => {
-            // Handle ICE candidates if using trickle: true
-        });
 
         // Request current video state for late joiners
         socketInstance.emit("get_video_state", { room: roomId });
@@ -139,8 +99,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         // Cleanup
         return () => {
             socketInstance.disconnect();
-            streamRef.current?.getTracks().forEach(track => track.stop());
-            peersRef.current.forEach(p => p.peer.destroy());
+
         };
     }, [roomId, userName]);
 
@@ -200,61 +159,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         setIsPlaying(false);
     };
 
-    const handleShareAudio = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true, // Required for getDisplayMedia, but we can ignore the video track
-                audio: true
-            });
 
-            streamRef.current = stream;
-            setIsSharingAudio(true);
-
-            // Notify server to call all users
-            // In a real app, we would get a list of users and call each one.
-            // For this MVP, we rely on the server to broadcast or we iterate known users.
-            // Since we don't have a full peer mesh management here, let's just emit a "startCall" to the room
-            // and let the server facilitate.
-            // Actually, the server 'callUser' expects a specific target.
-            // We need to iterate over `roomUsers` and call each one.
-
-            roomUsers.forEach(user => {
-                if (user.id === socket?.id) return;
-
-                const peer = new SimplePeer({
-                    initiator: true,
-                    trickle: false,
-                    stream: stream,
-                });
-
-                peer.on("signal", (signal) => {
-                    socket?.emit("callUser", {
-                        userToCall: user.id,
-                        signalData: signal,
-                        from: socket.id,
-                        name: userName,
-                    });
-                });
-
-                peersRef.current.push({
-                    peerID: user.id,
-                    peer,
-                });
-            });
-
-            // Handle stream stop (user clicks "Stop Sharing" in browser UI)
-            stream.getVideoTracks()[0].onended = () => {
-                setIsSharingAudio(false);
-                stream.getTracks().forEach(track => track.stop());
-                peersRef.current.forEach(p => p.peer.destroy());
-                peersRef.current = [];
-                // Notify others? (Optional for MVP, connection close handles it)
-            };
-
-        } catch (error) {
-            console.error("Error sharing audio:", error);
-        }
-    };
 
 
 
@@ -283,16 +188,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                             Load
                         </button>
                     </form>
-                    <button
-                        onClick={handleShareAudio}
-                        disabled={isSharingAudio}
-                        className={`px-4 py-2 rounded-xl transition-colors border text-sm font-medium ${isSharingAudio
-                            ? 'bg-red-500/10 border-red-500/50 text-red-400'
-                            : 'bg-indigo-600 hover:bg-indigo-500 border-transparent text-white'
-                            }`}
-                    >
-                        {isSharingAudio ? 'Sharing Audio...' : 'Share Audio'}
-                    </button>
+
                 </div>
 
                 {/* Player Container */}
@@ -428,8 +324,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     </form>
                 </div>
             </div>
-            {/* Hidden Audio Element for WebRTC Stream */}
-            <audio ref={userAudioRef} autoPlay hidden />
+
         </div>
     );
 }
