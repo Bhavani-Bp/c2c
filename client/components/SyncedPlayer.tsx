@@ -11,9 +11,28 @@ interface SyncedPlayerProps {
 }
 
 export default function SyncedPlayer({ roomId, userName, isHost, socket }: SyncedPlayerProps) {
+    // STEP 2: Guard against missing required props
+    if (!roomId || !userName) {
+        console.warn("❌ SyncedPlayer loaded without roomId/userName");
+        return <div className="text-red-500 p-4">Error: Missing room information.</div>;
+    }
+
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [serverOffset, setServerOffset] = useState(0); // ms: localTime = serverTime + serverOffset
-    const [url, setUrl] = useState('');
+
+    // STEP 2: Safe state initialization
+    const [serverOffset, setServerOffset] = useState(0);
+    const [ready, setReady] = useState(false);
+    const [videoState, setVideoState] = useState<{
+        url: string;
+        isPlaying: boolean;
+        currentTime: number;
+        lastUpdated: number;
+    }>({
+        url: "",
+        isPlaying: false,
+        currentTime: 0,
+        lastUpdated: Date.now()
+    });
     const [inputUrl, setInputUrl] = useState('');
     const [peers, setPeers] = useState<number>(0);
     const [syncStatus, setSyncStatus] = useState<string>('');
@@ -23,33 +42,70 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
     const syncServerTime = async () => {
         if (!socket) return;
 
-        const t0 = Date.now();
-        socket.emit('get_server_time', (resp: { serverTime: number }) => {
-            const t3 = Date.now();
-            const rtt = t3 - t0;
-            const serverTime = resp.serverTime;
-            const approxLocalAtServer = t0 + rtt / 2;
-            const offset = serverTime - approxLocalAtServer;
-            setServerOffset(offset);
-            console.log(`⏱️ Server time sync: offset=${offset}ms, RTT=${rtt}ms`);
-        });
+        try {
+            const t0 = Date.now();
+            socket.emit('get_server_time', (resp: { serverTime: number }) => {
+                if (!resp || typeof resp.serverTime !== 'number') {
+                    console.warn('Invalid server time response', resp);
+                    return;
+                }
+                const t3 = Date.now();
+                const rtt = t3 - t0;
+                const serverTime = resp.serverTime;
+                const approxLocalAtServer = t0 + rtt / 2;
+                const offset = serverTime - approxLocalAtServer;
+                setServerOffset(offset);
+                console.log(`⏱️ Server time sync: offset=${offset}ms, RTT=${rtt}ms`);
+            });
+        } catch (e) {
+            console.warn('Time sync failed', e);
+        }
     };
+
+    // STEP 5: Ready gate - prevent sync until socket is ready
+    useEffect(() => {
+        if (socket && roomId) {
+            console.log("✅ SyncedPlayer is ready.");
+            setReady(true);
+            syncServerTime();
+        }
+    }, [socket, roomId]);
 
     // Periodic server time sync (every 15 seconds)
     useEffect(() => {
-        syncServerTime();
+        if (!ready) return;
+
         const id = setInterval(syncServerTime, 15000);
         return () => clearInterval(id);
-    }, [socket]);
+    }, [ready, socket]);
 
     // Socket event listeners for synchronized playback
     useEffect(() => {
-        if (!socket) return;
+        if (!socket || !ready) return;
 
-        // Load video with scheduled start
-        socket.on('load_video', ({ url: videoUrl, startAt }: { url: string; startAt: number }) => {
-            console.log(`📹 Received load_video: ${videoUrl} at ${startAt}`);
-            setUrl(videoUrl);
+        // STEP 3: Fix socket event handlers with validation
+        socket.on('load_video', (payload: any) => {
+            console.log(`📹 Received load_video:`, payload);
+
+            // Validate payload
+            if (!payload || typeof payload !== 'object') {
+                console.warn('Invalid load_video payload:', payload);
+                return;
+            }
+
+            const { url: videoUrl, startAt } = payload;
+
+            if (!videoUrl || typeof videoUrl !== 'string') {
+                console.warn('Invalid video URL in load_video:', videoUrl);
+                return;
+            }
+
+            setVideoState(prev => ({
+                ...prev,
+                url: videoUrl,
+                currentTime: 0,
+                isPlaying: false
+            }));
             setIsLoading(true);
             setSyncStatus('Loading video...');
 
@@ -59,24 +115,31 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             v.src = videoUrl;
             v.load();
 
-            const localStart = startAt - serverOffset;
-            const now = Date.now();
-            const delay = Math.max(0, localStart - now);
+            if (typeof startAt === 'number') {
+                const localStart = startAt - serverOffset;
+                const now = Date.now();
+                const delay = Math.max(0, localStart - now);
 
-            console.log(`⏰ Scheduling start in ${delay}ms (localStart=${localStart}, now=${now})`);
+                console.log(`⏰ Scheduling start in ${delay}ms`);
 
-            setTimeout(() => {
-                const elapsed = (Date.now() - localStart) / 1000;
-                v.currentTime = Math.max(0, elapsed);
-                v.play().catch((e) => console.error('Play error:', e));
-                setIsLoading(false);
-                setSyncStatus('Synced');
-                setTimeout(() => setSyncStatus(''), 2000);
-            }, delay);
+                setTimeout(() => {
+                    const elapsed = (Date.now() - localStart) / 1000;
+                    v.currentTime = Math.max(0, elapsed);
+                    v.play().catch((e) => console.error('Play error:', e));
+                    setIsLoading(false);
+                    setSyncStatus('Synced');
+                    setTimeout(() => setSyncStatus(''), 2000);
+                }, delay);
+            }
         });
 
-        // Play command
-        socket.on('play', ({ at }: { at: number }) => {
+        socket.on('play', (payload: any) => {
+            if (!payload || typeof payload.at !== 'number') {
+                console.warn('Invalid play payload:', payload);
+                return;
+            }
+
+            const { at } = payload;
             console.log(`▶️ Received play at ${at}`);
             const localAt = at - serverOffset;
             const now = Date.now();
@@ -93,8 +156,13 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             }, delay);
         });
 
-        // Pause command
-        socket.on('pause', ({ at }: { at: number }) => {
+        socket.on('pause', (payload: any) => {
+            if (!payload || typeof payload.at !== 'number') {
+                console.warn('Invalid pause payload:', payload);
+                return;
+            }
+
+            const { at } = payload;
             console.log(`⏸️ Received pause at ${at}`);
             const localAt = at - serverOffset;
             const now = Date.now();
@@ -109,8 +177,13 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             }, delay);
         });
 
-        // Seek command
-        socket.on('seek', ({ to, at }: { to: number; at: number }) => {
+        socket.on('seek', (payload: any) => {
+            if (!payload || typeof payload.to !== 'number' || typeof payload.at !== 'number') {
+                console.warn('Invalid seek payload:', payload);
+                return;
+            }
+
+            const { to, at } = payload;
             console.log(`⏩ Received seek to ${to}s at ${at}`);
             const localAt = at - serverOffset;
             const now = Date.now();
@@ -125,9 +198,14 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             }, delay);
         });
 
-        // User list updates
-        socket.on('room_users', ({ users }: { users: any[] }) => {
-            setPeers(users.length);
+        // STEP 3: Safe user_list handler
+        socket.on('room_users', (payload: any) => {
+            if (!payload || !Array.isArray(payload.users)) {
+                console.warn("Invalid user_list payload:", payload);
+                setPeers(0);
+                return;
+            }
+            setPeers(payload.users.length);
         });
 
         return () => {
@@ -137,43 +215,69 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             socket.off('seek');
             socket.off('room_users');
         };
-    }, [socket, serverOffset]);
+    }, [socket, serverOffset, ready]);
 
-    // Request current state on mount (for late joiners)
+    // STEP 6: Safe request_current_state handling
     useEffect(() => {
-        if (!socket) return;
+        if (!socket || !ready) return;
 
         socket.emit('request_current_state', { roomId }, (state: any) => {
-            if (state && state.url) {
-                console.log('🔄 Late joiner: received state', state);
-                setUrl(state.url);
-
-                const v = videoRef.current;
-                if (!v) return;
-
-                v.src = state.url;
-                v.load();
-
-                // Calculate elapsed time since last update
-                const elapsed = (state.serverTime - state.lastUpdated) / 1000;
-                const targetTime = state.currentTime + (state.isPlaying ? elapsed : 0);
-
-                v.currentTime = targetTime;
-                if (state.isPlaying) {
-                    v.play().catch((e) => console.error('Play error:', e));
-                }
-
-                setSyncStatus('Synced with room');
-                setTimeout(() => setSyncStatus(''), 2000);
+            // Validate state
+            if (!state || typeof state !== "object") {
+                console.warn("Invalid room state", state);
+                return;
             }
+
+            console.log('🔄 Late joiner: received state', state);
+
+            // Safe state extraction
+            const safeState = {
+                url: typeof state.url === 'string' ? state.url : "",
+                isPlaying: !!state.isPlaying,
+                currentTime: Number(state.currentTime || 0),
+                lastUpdated: Number(state.lastUpdated || Date.now())
+            };
+
+            setVideoState(safeState);
+
+            if (!safeState.url) {
+                console.log('No URL in room state yet');
+                return;
+            }
+
+            const v = videoRef.current;
+            if (!v) return;
+
+            v.src = safeState.url;
+            v.load();
+
+            // Calculate elapsed time since last update
+            const elapsed = (Date.now() - safeState.lastUpdated) / 1000;
+            const targetTime = safeState.currentTime + (safeState.isPlaying ? elapsed : 0);
+
+            v.currentTime = Math.max(0, targetTime);
+            if (safeState.isPlaying) {
+                v.play().catch((e) => console.error('Play error:', e));
+            }
+
+            setSyncStatus('Synced with room');
+            setTimeout(() => setSyncStatus(''), 2000);
         });
-    }, [socket, roomId]);
+    }, [socket, roomId, ready]);
 
     // Host controls
     const hostLoad = async (videoUrl: string) => {
         if (!socket) return;
+        if (!videoUrl || typeof videoUrl !== 'string') {
+            console.warn('Invalid video URL');
+            return;
+        }
 
         socket.emit('get_server_time', (resp: { serverTime: number }) => {
+            if (!resp || typeof resp.serverTime !== 'number') {
+                console.warn('Invalid server time response');
+                return;
+            }
             const startAt = resp.serverTime + 3000; // 3s lead time
             socket.emit('load_video', { roomId, url: videoUrl, startAt });
             setInputUrl('');
@@ -183,6 +287,7 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
     const hostPlay = async () => {
         if (!socket) return;
         socket.emit('get_server_time', (resp: { serverTime: number }) => {
+            if (!resp || typeof resp.serverTime !== 'number') return;
             socket.emit('play', { roomId, at: resp.serverTime });
         });
     };
@@ -190,6 +295,7 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
     const hostPause = async () => {
         if (!socket) return;
         socket.emit('get_server_time', (resp: { serverTime: number }) => {
+            if (!resp || typeof resp.serverTime !== 'number') return;
             socket.emit('pause', { roomId, at: resp.serverTime });
         });
     };
@@ -203,6 +309,7 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
         if (isNaN(seekTo)) return;
 
         socket.emit('get_server_time', (resp: { serverTime: number }) => {
+            if (!resp || typeof resp.serverTime !== 'number') return;
             socket.emit('seek', { roomId, to: seekTo, at: resp.serverTime });
         });
     };
@@ -213,6 +320,14 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
             hostLoad(inputUrl.trim());
         }
     };
+
+    // STEP 5: Don't render until ready
+    if (!ready) {
+        return <div className="flex items-center justify-center h-full text-zinc-400">Preparing player...</div>;
+    }
+
+    // STEP 2: Validate videoState before using
+    const safeUrl = videoState?.url ?? "";
 
     return (
         <div className="flex flex-col h-full">
@@ -267,7 +382,7 @@ export default function SyncedPlayer({ roomId, userName, isHost, socket }: Synce
 
             {/* Video Player */}
             <div className="flex-1 bg-black flex items-center justify-center relative">
-                {url ? (
+                {safeUrl ? (
                     <>
                         <video
                             ref={videoRef}

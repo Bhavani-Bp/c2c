@@ -278,6 +278,20 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
 
 
+    // STEP 1: Guard rendering - do not render SyncedPlayer until socket ready
+    if (!socket || !roomId || !userName) {
+        console.warn("⏳ Waiting for required props before rendering SyncedPlayer...");
+        return (
+            <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
+                <div className="text-center">
+                    <div className="text-4xl mb-4">⏳</div>
+                    <div className="text-lg">Connecting to room...</div>
+                    <div className="text-sm text-zinc-500 mt-2">Please wait</div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col lg:flex-row h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
             {/* Left Side: Video Player Area */}
