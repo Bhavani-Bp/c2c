@@ -38,8 +38,22 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const streamRef = useRef<MediaStream | null>(null);
 
     useEffect(() => {
+        // Runtime validation for NEXT_PUBLIC_SOCKET_URL
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+
+        console.log('🚨 SOCKET URL:', socketUrl);
+
+        if (!socketUrl) {
+            console.error('❌ NEXT_PUBLIC_SOCKET_URL is not defined!');
+            console.error('Please set it in Vercel Dashboard:');
+            console.error('Settings → Environment Variables → Add:');
+            console.error('NEXT_PUBLIC_SOCKET_URL = https://your-ngrok-url.ngrok-free.dev');
+            setConnectionStatus('disconnected');
+            setSyncStatus('❌ Missing NEXT_PUBLIC_SOCKET_URL environment variable');
+            return;
+        }
+
         // Initialize Socket Connection with WebSocket transport
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
         const socketInstance = io(socketUrl, {
             transports: ["websocket", "polling"], // Try WebSocket first, fallback to polling
             reconnection: true,
