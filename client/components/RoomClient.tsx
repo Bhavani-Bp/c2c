@@ -93,7 +93,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         });
 
         // Listen for Video Sync Events
-        socketInstance.on("receive_video_url_change", (data) => {
+        globalSocket.on("receive_video_url_change", (data) => {
             console.log('Received video URL change:', data.url);
             setUrl(data.url);
             setIsPlaying(false); // Reset playing state when URL changes
@@ -101,7 +101,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             setTimeout(() => setSyncStatus(''), 3000);
         });
 
-        socketInstance.on("receive_video_state", (data) => {
+        globalSocket.on("receive_video_state", (data) => {
             console.log('Received video state:', data);
             if (data.url) {
                 setUrl(data.url);
@@ -113,7 +113,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         });
 
         // WebRTC Signaling for Audio Sharing
-        socketInstance.on("callUser", (data) => {
+        globalSocket.on("callUser", (data) => {
             console.log("Receiving call from:", data.from);
             const peer = new SimplePeer({
                 initiator: false,
@@ -121,7 +121,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             });
 
             peer.on("signal", (signal) => {
-                socketInstance.emit("answerCall", { signal, to: data.from });
+                globalSocket.emit("answerCall", { signal, to: data.from });
             });
 
             peer.on("stream", (stream) => {
@@ -139,7 +139,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             });
         });
 
-        socketInstance.on("callAccepted", (data) => {
+        globalSocket.on("callAccepted", (data) => {
             console.log("Call accepted from:", data.from);
             const item = peersRef.current.find(p => p.peerID === data.from);
             if (item) {
@@ -148,16 +148,16 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         });
 
         // Better WebRTC Handling with Map
-        socketInstance.on("ice-candidate", (candidate) => {
+        globalSocket.on("ice-candidate", (candidate) => {
             // Handle ICE candidates if using trickle: true
         });
 
         // Request current video state for late joiners
-        socketInstance.emit("get_video_state", { room: roomId });
+        globalSocket.emit("get_video_state", { room: roomId });
 
         // Cleanup
         return () => {
-            socketInstance.disconnect();
+            globalSocket.disconnect();
             streamRef.current?.getTracks().forEach(track => track.stop());
             peersRef.current.forEach(p => p.peer.destroy());
         };
