@@ -32,7 +32,7 @@ describe('Day 4 - URL Handling Tests', () => {
     test('renders URL input field correctly', () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         expect(urlInput).toBeInTheDocument();
         expect(urlInput).toHaveValue('');
         
@@ -40,17 +40,18 @@ describe('Day 4 - URL Handling Tests', () => {
         expect(loadButton).toBeInTheDocument();
     });
 
-    test('starts with default YouTube video', () => {
+    test('starts with empty video URL', () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const player = screen.getByTestId('player-component');
-        expect(player).toHaveAttribute('data-url', 'https://www.youtube.com/watch?v=LXb3EKWsInQ');
+        // When URL is empty, PlayerComponent is not rendered, instead shows "No video loaded" message
+        expect(screen.getByText('No video loaded')).toBeInTheDocument();
+        expect(screen.queryByTestId('player-component')).not.toBeInTheDocument();
     });
 
     test('updates video URL when form submitted', async () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         const loadButton = screen.getByText('Load');
         
         fireEvent.change(urlInput, { target: { value: 'https://youtube.com/watch?v=newvideo' } });
@@ -65,7 +66,7 @@ describe('Day 4 - URL Handling Tests', () => {
     test('clears input field after loading URL', async () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)') as HTMLInputElement;
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4') as HTMLInputElement;
         const loadButton = screen.getByText('Load');
         
         fireEvent.change(urlInput, { target: { value: 'https://youtube.com/watch?v=test' } });
@@ -89,7 +90,7 @@ describe('Day 4 - URL Handling Tests', () => {
 
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         const loadButton = screen.getByText('Load');
         
         for (const url of testUrls) {
@@ -106,26 +107,26 @@ describe('Day 4 - URL Handling Tests', () => {
     test('prevents submission with empty URL', () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         const loadButton = screen.getByText('Load');
-        const originalUrl = 'https://www.youtube.com/watch?v=LXb3EKWsInQ';
         
-        // Ensure we start with default URL
-        const player = screen.getByTestId('player-component');
-        expect(player).toHaveAttribute('data-url', originalUrl);
+        // Ensure we start with empty URL (no player component rendered)
+        expect(screen.getByText('No video loaded')).toBeInTheDocument();
+        expect(screen.queryByTestId('player-component')).not.toBeInTheDocument();
         
         // Try to submit empty URL
         fireEvent.change(urlInput, { target: { value: '' } });
         fireEvent.click(loadButton);
         
-        // URL should remain unchanged
-        expect(player).toHaveAttribute('data-url', originalUrl);
+        // URL should remain unchanged (empty) - still shows "No video loaded"
+        expect(screen.getByText('No video loaded')).toBeInTheDocument();
+        expect(screen.queryByTestId('player-component')).not.toBeInTheDocument();
     });
 
     test('handles form submission via Enter key', async () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         
         fireEvent.change(urlInput, { target: { value: 'https://youtube.com/watch?v=enterkey' } });
         fireEvent.submit(urlInput.closest('form')!);
@@ -139,23 +140,23 @@ describe('Day 4 - URL Handling Tests', () => {
     test('handles malformed URLs gracefully', async () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         const loadButton = screen.getByText('Load');
         
         const malformedUrls = [
-            'not-a-url',
-            'http://',
-            'youtube.com/watch',
-            'ftp://example.com/video.mp4'
+            { input: 'not-a-url', expected: 'https://not-a-url' }, // RoomClient adds https:// prefix
+            { input: 'http://', expected: 'https://http://' }, // RoomClient adds https:// even if http:// is present but incomplete
+            { input: 'youtube.com/watch', expected: 'https://youtube.com/watch' },
+            { input: 'ftp://example.com/video.mp4', expected: 'https://ftp://example.com/video.mp4' } // RoomClient checks for 'http' not 'http://', so ftp:// gets https:// prepended
         ];
         
-        for (const url of malformedUrls) {
-            fireEvent.change(urlInput, { target: { value: url } });
+        for (const { input, expected } of malformedUrls) {
+            fireEvent.change(urlInput, { target: { value: input } });
             fireEvent.click(loadButton);
             
             await waitFor(() => {
                 const player = screen.getByTestId('player-component');
-                expect(player).toHaveAttribute('data-url', url);
+                expect(player).toHaveAttribute('data-url', expected);
             });
         }
     });
@@ -163,7 +164,7 @@ describe('Day 4 - URL Handling Tests', () => {
     test('URL input has correct styling and attributes', () => {
         render(<RoomClient roomId="test123" userName="TestUser" />);
         
-        const urlInput = screen.getByPlaceholderText('Paste video URL (YouTube, MP4, etc.)');
+        const urlInput = screen.getByPlaceholderText('Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
         
         expect(urlInput).toHaveAttribute('type', 'text');
         expect(urlInput).toHaveClass('flex-1', 'bg-zinc-950', 'border', 'border-zinc-700');

@@ -11,8 +11,8 @@ app.use(express.json());
 
 // Root route for server status
 app.get('/', (req, res) => {
-    res.json({ 
-        message: 'Connect to Connect Server is running!', 
+    res.json({
+        message: 'Connect to Connect Server is running!',
         status: 'active',
         availableEndpoints: [
             'POST /api/create-room',
@@ -26,15 +26,15 @@ app.get('/', (req, res) => {
 app.post('/api/create-room', (req, res) => {
     console.log('🚀 CREATE ROOM API CALLED:', { creatorName: req.body.creatorName, creatorEmail: req.body.creatorEmail });
     const { creatorName, creatorEmail } = req.body;
-    
+
     if (!creatorName || !creatorEmail) {
         console.log('❌ CREATE ROOM: Missing required fields');
         return res.status(400).json({ error: 'Name and email are required' });
     }
-    
+
     // Generate unique room ID
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
+
     // Create room
     rooms[roomId] = {
         users: [],
@@ -47,13 +47,13 @@ app.post('/api/create-room', (req, res) => {
         createdBy: creatorEmail,
         createdAt: new Date().toISOString()
     };
-    
+
     console.log('✅ CREATE ROOM SUCCESS:', { roomId, creatorName, creatorEmail });
     console.log('Available rooms now:', Object.keys(rooms));
-    res.json({ 
-        success: true, 
-        roomId, 
-        message: 'Room created successfully' 
+    res.json({
+        success: true,
+        roomId,
+        message: 'Room created successfully'
     });
 });
 
@@ -61,33 +61,33 @@ app.post('/api/create-room', (req, res) => {
 app.post('/api/send-verification', (req, res) => {
     console.log('📧 SEND VERIFICATION API CALLED:', { email: req.body.email, roomId: req.body.roomId });
     const { email, roomId } = req.body;
-    
+
     if (!email || !roomId) {
         console.log('❌ SEND VERIFICATION: Missing required fields');
         return res.status(400).json({ error: 'Email and room ID are required' });
     }
-    
+
     if (!rooms[roomId]) {
         return res.status(404).json({ error: 'Room not found' });
     }
-    
+
     // Generate 6-digit verification code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Store verification code (expires in 10 minutes)
     verificationCodes[email] = {
         code,
         roomId,
         expiresAt: Date.now() + 10 * 60 * 1000
     };
-    
+
     // In production, send email here
     console.log(`Verification code for ${email}: ${code}`);
-    
+
     console.log('✅ VERIFICATION CODE SENT:', { email, roomId, code });
-    res.json({ 
-        success: true, 
-        message: 'Verification code sent to your email' 
+    res.json({
+        success: true,
+        message: 'Verification code sent to your email'
     });
 });
 
@@ -95,35 +95,35 @@ app.post('/api/send-verification', (req, res) => {
 app.post('/api/verify-code', (req, res) => {
     console.log('🔐 VERIFY CODE API CALLED:', { email: req.body.email, code: req.body.code, name: req.body.name });
     const { email, code, name } = req.body;
-    
+
     if (!email || !code || !name) {
         console.log('❌ VERIFY CODE: Missing required fields');
         return res.status(400).json({ error: 'Email, code, and name are required' });
     }
-    
+
     const verification = verificationCodes[email];
-    
+
     if (!verification) {
         return res.status(400).json({ error: 'No verification code found' });
     }
-    
+
     if (Date.now() > verification.expiresAt) {
         delete verificationCodes[email];
         return res.status(400).json({ error: 'Verification code expired' });
     }
-    
+
     if (verification.code !== code) {
         return res.status(400).json({ error: 'Invalid verification code' });
     }
-    
+
     // Clean up verification code
     delete verificationCodes[email];
-    
+
     console.log('✅ VERIFICATION SUCCESS:', { email, name, roomId: verification.roomId });
-    res.json({ 
-        success: true, 
+    res.json({
+        success: true,
         roomId: verification.roomId,
-        message: 'Verification successful' 
+        message: 'Verification successful'
     });
 });
 
@@ -131,40 +131,40 @@ app.post('/api/verify-code', (req, res) => {
 app.post('/api/join-room', (req, res) => {
     console.log('🚪 JOIN ROOM API CALLED:', { name: req.body.name, email: req.body.email, roomId: req.body.roomId });
     const { name, email, roomId } = req.body;
-    
+
     if (!name || !email || !roomId) {
         console.log('❌ JOIN ROOM: Missing required fields');
         return res.status(400).json({ error: 'Name, email, and room ID are required' });
     }
-    
+
     if (!rooms[roomId]) {
         console.log('❌ JOIN ROOM: Room not found:', roomId);
         console.log('Available rooms:', Object.keys(rooms));
         console.log('Total rooms:', Object.keys(rooms).length);
-        return res.status(404).json({ 
-            error: 'Room not found. Please check the Room ID.', 
+        return res.status(404).json({
+            error: 'Room not found. Please check the Room ID.',
             availableRooms: Object.keys(rooms).length,
             hint: 'Make sure you\'re using the exact Room ID shared by the room creator'
         });
     }
-    
+
     console.log('✅ JOIN ROOM SUCCESS:', { name, email, roomId });
     console.log('Room exists with users:', rooms[roomId].users.length);
-    res.json({ 
-        success: true, 
+    res.json({
+        success: true,
         roomId,
-        message: 'Successfully joined room' 
+        message: 'Successfully joined room'
     });
 });
 
 // Get Room Info API
 app.get('/api/room/:roomId', (req, res) => {
     const { roomId } = req.params;
-    
+
     if (!rooms[roomId]) {
         return res.status(404).json({ error: 'Room not found' });
     }
-    
+
     res.json({
         success: true,
         room: {
@@ -179,7 +179,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:3000", "http://localhost:3002", "http://10.10.0.5:3000"], // Allow frontend connection
+        origin: "*", // Allow all origins for Vercel deployment testing
         methods: ["GET", "POST"]
     }
 });
@@ -201,7 +201,7 @@ io.on('connection', (socket) => {
 
         // Initialize room if it doesn't exist
         if (!rooms[room]) {
-            rooms[room] = { 
+            rooms[room] = {
                 users: [],
                 videoState: {
                     url: '',
@@ -290,6 +290,26 @@ io.on('connection', (socket) => {
         if (rooms[room] && rooms[room].videoState) {
             socket.emit('receive_video_state', rooms[room].videoState);
         }
+    });
+
+    // WebRTC Signaling Events
+    socket.on("callUser", (data) => {
+        // data: { userToCall, signalData, from, name }
+        io.to(data.userToCall).emit("callUser", {
+            signal: data.signalData,
+            from: data.from,
+            name: data.name
+        });
+    });
+
+    socket.on("answerCall", (data) => {
+        // data: { to, signal }
+        io.to(data.to).emit("callAccepted", { signal: data.signal, from: socket.id });
+    });
+
+    socket.on("ice-candidate", (data) => {
+        // data: { to, candidate }
+        io.to(data.to).emit("ice-candidate", data.candidate);
     });
 
     // Disconnect Event
