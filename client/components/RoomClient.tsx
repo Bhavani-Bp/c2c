@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import { Send, MessageSquare } from "lucide-react";
-import SyncedPlayer from "./SyncedPlayer";
+import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
+import PlayerComponent from "./PlayerComponent";
+import SimplePeer from "simple-peer";
 
 interface Message {
     message: string;
@@ -16,12 +17,8 @@ interface RoomClientProps {
     userName: string;
 }
 
-// Global socket to prevent multiple initializations during HMR
-let globalSocket: Socket | null = null;
-
 export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [socket, setSocket] = useState<Socket | null>(null);
-    const [socketReady, setSocketReady] = useState(false);
     const [currentMessage, setCurrentMessage] = useState("");
     const [messageList, setMessageList] = useState<Message[]>([]);
     const [url, setUrl] = useState(""); // Start with empty URL
@@ -30,61 +27,54 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [currentTime, setCurrentTime] = useState(0);
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
-    const [hostId, setHostId] = useState<string | null>(null);
-    const [isHost, setIsHost] = useState(false);
     const [syncStatus, setSyncStatus] = useState<string>('');
+    const [isSharingAudio, setIsSharingAudio] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const userAudioRef = useRef<HTMLAudioElement>(null);
+    const peersRef = useRef<any[]>([]);
+    const streamRef = useRef<MediaStream | null>(null);
 
-    // STEP 1: Completely restore socket initialization
     useEffect(() => {
-        // STEP 3: Debug log before initialization
-        console.log("🚨 Initializing socket with URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
+        // Initialize Socket Connection with WebSocket transport
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+        const socketInstance = io(socketUrl, {
+            transports: ["websocket", "polling"], // Try WebSocket first, fallback to polling
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        });
+        setSocket(socketInstance);
 
-        if (typeof window === "undefined") return;
-
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-        if (!socketUrl) {
-            console.error("Missing NEXT_PUBLIC_SOCKET_URL");
-            return;
-        }
-
-        // Use global socket to prevent multiple initializations
-        if (!globalSocket) {
-            globalSocket = io(socketUrl, { transports: ["websocket"] });
-        }
-
-        setSocket(globalSocket);
-
-        globalSocket.on("connect", () => {
-            console.log("✅ Socket connected:", globalSocket?.id);
-            setSocketReady(true);
-            globalSocket?.emit("join_room", { room: roomId, name: userName });
+        // Connection status handlers
+        socketInstance.on('connect', () => {
+            setConnectionStatus('connected');
+            setSyncStatus('Connected to room');
+            // Join Room after connection is established
+            socketInstance.emit("join_room", { room: roomId, name: userName });
         });
 
-        globalSocket.on("user_list", ({ users }: { users: any[] }) => {
-            console.log("👥 Received user_list:", users);
-            const safeUsers = Array.isArray(users) ? users : [];
-            setRoomUsers(safeUsers);
-            setIsHost(safeUsers?.[0] === globalSocket?.id);
+        socketInstance.on('disconnect', () => {
+            setConnectionStatus('disconnected');
+            setSyncStatus('Disconnected from room');
         });
 
-        // Listen for room users updates with host info
-        globalSocket.on('room_users', (data: { users: any[], host: string | null }) => {
-            console.log("👥 Received room_users:", data);
-            const safeUsers = Array.isArray(data?.users) ? data.users : [];
-            setRoomUsers(safeUsers);
-            setHostId(data.host);
-            setIsHost(data.host === globalSocket?.id);
-            console.log(`👥 Room users updated: ${safeUsers.length}, host: ${data.host}, isHost: ${data.host === globalSocket?.id}`);
+        socketInstance.on('connect_error', () => {
+            setConnectionStatus('disconnected');
+            setSyncStatus('Connection failed');
         });
 
         // Listen for Messages
-        globalSocket.on("receive_message", (data: Message) => {
+        socketInstance.on("receive_message", (data: Message) => {
             setMessageList((list) => [...list, data]);
         });
 
+        // Listen for room users updates
+        socketInstance.on('room_users', (users) => {
+            setRoomUsers(users);
+        });
+
         // Listen for Video Sync Events
-        globalSocket.on("receive_video_url_change", (data) => {
+        socketInstance.on("receive_video_url_change", (data) => {
             console.log('Received video URL change:', data.url);
             setUrl(data.url);
             setIsPlaying(false); // Reset playing state when URL changes
@@ -92,7 +82,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             setTimeout(() => setSyncStatus(''), 3000);
         });
 
-        globalSocket.on("receive_video_state", (data) => {
+        socketInstance.on("receive_video_state", (data) => {
             console.log('Received video state:', data);
             if (data.url) {
                 setUrl(data.url);
@@ -103,12 +93,54 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             }
         });
 
+        // WebRTC Signaling for Audio Sharing
+        socketInstance.on("callUser", (data) => {
+            console.log("Receiving call from:", data.from);
+            const peer = new SimplePeer({
+                initiator: false,
+                trickle: false,
+            });
+
+            peer.on("signal", (signal) => {
+                socketInstance.emit("answerCall", { signal, to: data.from });
+            });
+
+            peer.on("stream", (stream) => {
+                console.log("Receiving audio stream");
+                if (userAudioRef.current) {
+                    userAudioRef.current.srcObject = stream;
+                    userAudioRef.current.play().catch(e => console.error("Error playing audio:", e));
+                }
+            });
+
+            peer.signal(data.signal);
+            peersRef.current.push({
+                peerID: data.from,
+                peer,
+            });
+        });
+
+        socketInstance.on("callAccepted", (data) => {
+            console.log("Call accepted from:", data.from);
+            const item = peersRef.current.find(p => p.peerID === data.from);
+            if (item) {
+                item.peer.signal(data.signal);
+            }
+        });
+
+        // Better WebRTC Handling with Map
+        socketInstance.on("ice-candidate", (candidate) => {
+            // Handle ICE candidates if using trickle: true
+        });
+
         // Request current video state for late joiners
-        globalSocket.emit("get_video_state", { room: roomId });
+        socketInstance.emit("get_video_state", { room: roomId });
 
         // Cleanup
         return () => {
-            globalSocket?.disconnect();
+            socketInstance.disconnect();
+            streamRef.current?.getTracks().forEach(track => track.stop());
+            peersRef.current.forEach(p => p.peer.destroy());
         };
     }, [roomId, userName]);
 
@@ -160,30 +192,138 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         }
     };
 
-    // STEP 2: Add a strict gate so SyncedPlayer NEVER renders first
-    if (!socketReady || !socket) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
-                <div className="text-center">
-                    <div className="text-4xl mb-4">⏳</div>
-                    <div className="text-lg">Connecting...</div>
-                    <div className="text-sm text-zinc-500 mt-2">Establishing connection to server</div>
-                </div>
-            </div>
-        );
-    }
+    const handlePlay = () => {
+        setIsPlaying(true);
+    };
+
+    const handlePause = () => {
+        setIsPlaying(false);
+    };
+
+    const handleShareAudio = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true, // Required for getDisplayMedia, but we can ignore the video track
+                audio: true
+            });
+
+            streamRef.current = stream;
+            setIsSharingAudio(true);
+
+            // Notify server to call all users
+            // In a real app, we would get a list of users and call each one.
+            // For this MVP, we rely on the server to broadcast or we iterate known users.
+            // Since we don't have a full peer mesh management here, let's just emit a "startCall" to the room
+            // and let the server facilitate.
+            // Actually, the server 'callUser' expects a specific target.
+            // We need to iterate over `roomUsers` and call each one.
+
+            roomUsers.forEach(user => {
+                if (user.id === socket?.id) return;
+
+                const peer = new SimplePeer({
+                    initiator: true,
+                    trickle: false,
+                    stream: stream,
+                });
+
+                peer.on("signal", (signal) => {
+                    socket?.emit("callUser", {
+                        userToCall: user.id,
+                        signalData: signal,
+                        from: socket.id,
+                        name: userName,
+                    });
+                });
+
+                peersRef.current.push({
+                    peerID: user.id,
+                    peer,
+                });
+            });
+
+            // Handle stream stop (user clicks "Stop Sharing" in browser UI)
+            stream.getVideoTracks()[0].onended = () => {
+                setIsSharingAudio(false);
+                stream.getTracks().forEach(track => track.stop());
+                peersRef.current.forEach(p => p.peer.destroy());
+                peersRef.current = [];
+                // Notify others? (Optional for MVP, connection close handles it)
+            };
+
+        } catch (error) {
+            console.error("Error sharing audio:", error);
+        }
+    };
+
+
 
     return (
         <div className="flex flex-col lg:flex-row h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
             {/* Left Side: Video Player Area */}
             <div className="flex-1 flex flex-col bg-black border-r border-zinc-800 relative">
-                {/* Synchronized Player */}
-                <SyncedPlayer
-                    roomId={roomId}
-                    userName={userName}
-                    isHost={isHost}
-                    socket={socket}
-                />
+                {/* URL Input Bar */}
+                <div className="p-4 bg-zinc-900/50 border-b border-zinc-800 flex gap-2 items-center">
+                    <div className="p-2 bg-indigo-500/10 rounded-lg">
+                        <LinkIcon className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                            value={inputUrl}
+                            onChange={(e) => setInputUrl(e.target.value)}
+                            className="flex-1 bg-zinc-950 border border-zinc-700 text-zinc-100 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-zinc-600"
+                        />
+                        <button
+                            type="submit"
+                            aria-label="Load video"
+                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors border border-zinc-700 text-sm font-medium"
+                        >
+                            Load
+                        </button>
+                    </form>
+                    <button
+                        onClick={handleShareAudio}
+                        disabled={isSharingAudio}
+                        className={`px-4 py-2 rounded-xl transition-colors border text-sm font-medium ${isSharingAudio
+                            ? 'bg-red-500/10 border-red-500/50 text-red-400'
+                            : 'bg-indigo-600 hover:bg-indigo-500 border-transparent text-white'
+                            }`}
+                    >
+                        {isSharingAudio ? 'Sharing Audio...' : 'Share Audio'}
+                    </button>
+                </div>
+
+                {/* Player Container */}
+                <div className="flex-1 p-4 flex items-center justify-center">
+                    <div className="w-full h-full max-h-[80vh] aspect-video">
+                        {url ? (
+                            <div className="relative w-full h-full">
+                                <PlayerComponent
+                                    url={url}
+                                    socket={socket}
+                                    roomId={roomId}
+                                    isPlaying={isPlaying}
+                                    onPlay={handlePlay}
+                                    onPause={handlePause}
+                                />
+                                {/* Debug URL display */}
+                                <div className="absolute top-2 right-2 bg-black/70 text-white text-xs p-2 rounded max-w-xs truncate">
+                                    {url}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="w-full h-full bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800">
+                                <div className="text-center text-zinc-500">
+                                    <div className="text-lg mb-2">🎬</div>
+                                    <div className="text-sm">No video loaded</div>
+                                    <div className="text-xs mt-1">Paste a video URL above to get started</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 {/* Enhanced Room Info Overlay */}
                 <div className="absolute bottom-4 left-4 space-y-2">
@@ -288,6 +428,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                     </form>
                 </div>
             </div>
+            {/* Hidden Audio Element for WebRTC Stream */}
+            <audio ref={userAudioRef} autoPlay hidden />
         </div>
     );
 }
