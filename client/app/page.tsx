@@ -97,27 +97,27 @@ export default function Home() {
 
   if (mode === 'create') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-white p-4">
-        <div className="w-full max-w-md space-y-8">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-stone-50 p-4">
+        <div className="w-full max-w-sm space-y-8 animate-[fadeIn_0.6s_ease-out]">
           <div className="text-center space-y-2">
-            <div className="h-16 w-16 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/20 mx-auto">
+            <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto">
               <Check className="h-8 w-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold">Room Created!</h1>
-            <p className="text-zinc-400">Share this Room ID with your friends</p>
+            <h1 className="text-2xl font-bold text-stone-50">Room Created!</h1>
+            <p className="text-stone-400">Share this Room ID with your friends</p>
           </div>
 
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
+          <div className="bg-[#0a0a0a] border border-stone-900 rounded-2xl p-6 shadow-[0_0_40px_rgba(59,130,246,0.15)]">
             <div className="space-y-4">
               <div className="text-center">
-                <label className="text-sm font-medium text-zinc-300 block mb-2">Room ID</label>
+                <label className="text-sm font-medium text-stone-300 block mb-2">Room ID</label>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center font-mono text-lg text-indigo-400">
+                  <div className="flex-1 px-4 py-3 bg-black border border-stone-800 rounded-xl text-center font-mono text-lg text-blue-400">
                     {createdRoomId}
                   </div>
                   <button
                     onClick={copyRoomId}
-                    className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors border border-zinc-700"
+                    className="px-4 py-3 bg-stone-900 hover:bg-stone-800 text-stone-300 rounded-xl transition-colors border border-stone-800 hover:border-blue-500/50"
                     title="Copy Room ID"
                   >
                     {copied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5" />}
@@ -128,14 +128,14 @@ export default function Home() {
 
               <button
                 onClick={joinCreatedRoom}
-                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                className="w-full py-3.5 bg-stone-50 hover:bg-blue-500 text-black hover:text-stone-50 font-medium rounded-xl transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(59,130,246,0.4)]"
               >
                 Join Your Room
               </button>
 
               <button
                 onClick={() => setMode('home')}
-                className="w-full py-2 text-zinc-400 hover:text-zinc-300 transition-colors"
+                className="w-full py-2 text-stone-500 hover:text-stone-400 transition-colors text-sm"
               >
                 Back to Home
               </button>
@@ -146,56 +146,49 @@ export default function Home() {
     );
   }
 
-
-
   return (
     <>
       {showSplash && <SplashScreen finishLoading={() => setShowSplash(false)} />}
-      <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-white p-4">
-        <div className="w-full max-w-md space-y-8">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-stone-50 p-4">
+        <div className="w-full max-w-sm space-y-8">
           <div className="text-center space-y-2">
-            <div className="flex justify-center">
-              <div className="h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <Play className="h-8 w-8 text-white fill-white" />
-              </div>
-            </div>
-            <h1 className="text-4xl font-bold tracking-tight">Connect to Connect</h1>
-            <p className="text-zinc-400">Watch movies and listen to music together, in perfect sync.</p>
+            <h1 className="text-4xl font-bold tracking-tight text-stone-50">Connect to Connect</h1>
+            <p className="text-stone-400">Watch movies and listen to music together, in perfect sync.</p>
           </div>
 
           {mode === 'home' && (
             <div className="space-y-4">
               <button
                 onClick={() => setMode('join')}
-                className="w-full py-4 bg-zinc-900/50 hover:bg-zinc-900/70 border border-zinc-800 rounded-2xl transition-all backdrop-blur-sm shadow-xl flex items-center justify-center gap-3"
+                className="w-full py-4 bg-stone-50 hover:bg-blue-500 text-black hover:text-stone-50 border border-stone-800 hover:border-transparent rounded-xl transition-all duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:shadow-[0_0_50px_rgba(59,130,246,0.4)] flex items-center justify-center gap-3 group"
               >
-                <Plus className="h-6 w-6 text-indigo-400" />
+                <Plus className="h-6 w-6 text-blue-500 group-hover:text-stone-50 transition-colors" />
                 <span className="font-medium">Create New Room</span>
               </button>
 
               <Link
                 href="/join"
-                className="w-full py-4 bg-zinc-900/50 hover:bg-zinc-900/70 border border-zinc-800 rounded-2xl transition-all backdrop-blur-sm shadow-xl flex items-center justify-center gap-3"
+                className="w-full py-4 bg-black hover:bg-stone-900 text-stone-50 border border-stone-800 hover:border-stone-700 rounded-xl transition-all duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:shadow-[0_0_50px_rgba(59,130,246,0.2)] flex items-center justify-center gap-3 group"
               >
-                <Users className="h-6 w-6 text-green-400" />
+                <Users className="h-6 w-6 text-stone-400 group-hover:text-stone-50 transition-colors" />
                 <span className="font-medium">Join Existing Room</span>
               </Link>
             </div>
           )}
 
           {mode === 'join' && (
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
+            <div className="bg-[#0a0a0a] border border-stone-900 rounded-2xl p-6 shadow-[0_0_40px_rgba(59,130,246,0.15)] animate-[fadeIn_0.6s_ease-out]">
               <div className="text-center space-y-2 mb-6">
-                <div className="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 mx-auto">
+                <div className="h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto">
                   <Plus className="h-6 w-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold">Create New Room</h2>
-                <p className="text-zinc-400 text-sm">Start a new watch party</p>
+                <h2 className="text-xl font-bold text-stone-50">Create New Room</h2>
+                <p className="text-stone-400 text-sm">Start a new watch party</p>
               </div>
 
               <form onSubmit={handleCreateRoom} className="space-y-4">
                 <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="name" className="text-xs font-medium text-stone-400">
                     Your Name
                   </label>
                   <input
@@ -204,13 +197,13 @@ export default function Home() {
                     placeholder="Enter your name"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-zinc-600"
+                    className="w-full px-4 py-2.5 bg-black border border-stone-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600 hover:border-blue-500/30 text-stone-50"
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="email" className="text-xs font-medium text-stone-400">
                     Email Address
                   </label>
                   <input
@@ -219,25 +212,25 @@ export default function Home() {
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-zinc-600"
+                    className="w-full px-4 py-2.5 bg-black border border-stone-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600 hover:border-blue-500/30 text-stone-50"
                     required
                   />
                 </div>
 
                 {error && (
-                  <div className="text-red-400 text-sm text-center">{error}</div>
+                  <div className="text-red-400 text-xs text-center bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</div>
                 )}
 
                 <button
                   type="submit"
                   disabled={loading || !displayName || !email}
-                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-stone-50 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-black hover:text-stone-50 font-medium rounded-lg transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(59,130,246,0.4)] flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     'Creating Room...'
                   ) : (
                     <>
-                      <Plus className="h-5 w-5" />
+                      <Plus className="h-4 w-4" />
                       Create Room
                     </>
                   )}
@@ -246,7 +239,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setMode('home')}
-                  className="w-full py-2 text-zinc-400 hover:text-zinc-300 transition-colors"
+                  className="w-full py-2 text-stone-500 hover:text-stone-400 transition-colors text-xs"
                 >
                   Back to Home
                 </button>

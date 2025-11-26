@@ -191,7 +191,7 @@ export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay
     };
 
     return (
-        <div className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-800">
+        <div className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl border border-stone-800">
             {error && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                     <div className="text-red-400 text-sm">{error}</div>
@@ -203,7 +203,7 @@ export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay
 
             {!isReady && !error && url && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
-                    <div className="text-zinc-400 text-sm">Loading YouTube Player...</div>
+                    <div className="text-stone-400 text-sm">Loading YouTube Player...</div>
                 </div>
             )}
         </div>

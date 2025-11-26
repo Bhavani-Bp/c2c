@@ -164,13 +164,13 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
 
     return (
-        <div className="flex flex-col lg:flex-row h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
+        <div className="flex flex-col lg:flex-row h-screen bg-black text-stone-50 overflow-hidden font-sans">
             {/* Left Side: Video Player Area */}
-            <div className="flex-1 flex flex-col bg-black border-r border-zinc-800 relative">
+            <div className="flex-1 flex flex-col bg-black border-r border-stone-800 relative">
                 {/* URL Input Bar */}
-                <div className="p-4 bg-zinc-900/50 border-b border-zinc-800 flex gap-2 items-center">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                        <LinkIcon className="h-5 w-5 text-indigo-400" />
+                <div className="p-4 bg-[#0a0a0a] border-b border-stone-800 flex gap-2 items-center">
+                    <div className="p-2 bg-blue-500/10 rounded-lg">
+                        <LinkIcon className="h-5 w-5 text-blue-500" />
                     </div>
                     <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
                         <input
@@ -178,12 +178,12 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                             placeholder="Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
                             value={inputUrl}
                             onChange={(e) => setInputUrl(e.target.value)}
-                            className="flex-1 bg-zinc-950 border border-zinc-700 text-zinc-100 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-zinc-600"
+                            className="flex-1 bg-black border border-stone-800 text-stone-50 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600"
                         />
                         <button
                             type="submit"
                             aria-label="Load video"
-                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors border border-zinc-700 text-sm font-medium"
+                            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-stone-300 rounded-xl transition-colors border border-stone-800 text-sm font-medium"
                         >
                             Load
                         </button>
@@ -205,13 +205,13 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                     onPause={handlePause}
                                 />
                                 {/* Debug URL display */}
-                                <div className="absolute top-2 right-2 bg-black/70 text-white text-xs p-2 rounded max-w-xs truncate">
+                                <div className="absolute top-2 right-2 bg-black/70 text-stone-50 text-xs p-2 rounded max-w-xs truncate border border-stone-800">
                                     {url}
                                 </div>
                             </div>
                         ) : (
-                            <div className="w-full h-full bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800">
-                                <div className="text-center text-zinc-500">
+                            <div className="w-full h-full bg-[#0a0a0a] rounded-xl flex items-center justify-center border border-stone-800 shadow-[0_0_40px_rgba(59,130,246,0.05)]">
+                                <div className="text-center text-stone-500">
                                     <div className="text-lg mb-2">🎬</div>
                                     <div className="text-sm">No video loaded</div>
                                     <div className="text-xs mt-1">Paste a video URL above to get started</div>
@@ -223,22 +223,22 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
                 {/* Enhanced Room Info Overlay */}
                 <div className="absolute bottom-4 left-4 space-y-2">
-                    <div className="p-2 bg-zinc-900/80 backdrop-blur-sm rounded-lg border border-zinc-800 text-xs text-zinc-400">
-                        Room: <span className="text-indigo-400 font-mono">{roomId}</span>
+                    <div className="p-2 bg-black/80 backdrop-blur-sm rounded-lg border border-stone-800 text-xs text-stone-400">
+                        Room: <span className="text-blue-400 font-mono">{roomId}</span>
                     </div>
-                    <div className="p-2 bg-zinc-900/80 backdrop-blur-sm rounded-lg border border-zinc-800 text-xs flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' :
-                            connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+                    <div className="p-2 bg-black/80 backdrop-blur-sm rounded-lg border border-stone-800 text-xs flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-blue-500' :
+                            connectionStatus === 'connecting' ? 'bg-stone-500 animate-pulse' :
                                 'bg-red-500'
                             }`}></div>
-                        <span className="text-zinc-400">
+                        <span className="text-stone-400">
                             {connectionStatus === 'connected' ? `${roomUsers.length} users` :
                                 connectionStatus === 'connecting' ? 'Connecting...' :
                                     'Disconnected'}
                         </span>
                     </div>
                     {syncStatus && (
-                        <div className="p-2 bg-indigo-900/80 backdrop-blur-sm rounded-lg border border-indigo-800 text-xs text-indigo-300">
+                        <div className="p-2 bg-blue-900/80 backdrop-blur-sm rounded-lg border border-blue-800 text-xs text-blue-300">
                             {syncStatus}
                         </div>
                     )}
@@ -246,16 +246,16 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             </div>
 
             {/* Right Side: Chat UI */}
-            <div className="w-full lg:w-96 flex flex-col bg-zinc-950 border-t lg:border-t-0 lg:border-l border-zinc-800 shadow-2xl">
+            <div className="w-full lg:w-96 flex flex-col bg-black border-t lg:border-t-0 lg:border-l border-stone-800 shadow-2xl">
                 {/* Chat Header */}
-                <div className="p-4 border-b border-zinc-800 bg-zinc-900/30 backdrop-blur-md flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                        <MessageSquare className="h-5 w-5 text-indigo-400" />
+                <div className="p-4 border-b border-stone-800 bg-[#0a0a0a] backdrop-blur-md flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/10 rounded-lg">
+                        <MessageSquare className="h-5 w-5 text-blue-500" />
                     </div>
                     <div>
-                        <h3 className="font-semibold text-zinc-100">Live Chat</h3>
-                        <p className="text-xs text-zinc-500 flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                        <h3 className="font-semibold text-stone-50">Live Chat</h3>
+                        <p className="text-xs text-stone-500 flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-blue-500 animate-pulse' : 'bg-red-500'
                                 }`}></span>
                             {connectionStatus === 'connected' ? `${roomUsers.length} online` : 'Offline'}
                         </p>
@@ -263,7 +263,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                 </div>
 
                 {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-stone-800 scrollbar-track-transparent">
                     {messageList.map((msg, index) => {
                         const isSystem = msg.username === "System";
                         const isMe = msg.username === userName;
@@ -271,7 +271,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                         if (isSystem) {
                             return (
                                 <div key={index} className="flex justify-center my-4">
-                                    <span className="text-xs text-zinc-500 bg-zinc-900/50 px-3 py-1 rounded-full border border-zinc-800/50">
+                                    <span className="text-xs text-stone-500 bg-stone-900/50 px-3 py-1 rounded-full border border-stone-800/50">
                                         {msg.message}
                                     </span>
                                 </div>
@@ -284,15 +284,15 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                 className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                             >
                                 <div className="flex items-baseline gap-2 mb-1">
-                                    <span className={`text-xs font-medium ${isMe ? "text-indigo-400" : "text-zinc-400"}`}>
+                                    <span className={`text-xs font-medium ${isMe ? "text-blue-400" : "text-stone-400"}`}>
                                         {msg.username}
                                     </span>
-                                    <span className="text-[10px] text-zinc-600">{msg.time}</span>
+                                    <span className="text-[10px] text-stone-600">{msg.time}</span>
                                 </div>
                                 <div
                                     className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm leading-relaxed ${isMe
-                                        ? "bg-indigo-600 text-white rounded-tr-none"
-                                        : "bg-zinc-800 text-zinc-200 rounded-tl-none"
+                                        ? "bg-blue-600 text-white rounded-tr-none shadow-[0_0_15px_rgba(37,99,235,0.3)]"
+                                        : "bg-stone-900 text-stone-200 rounded-tl-none border border-stone-800"
                                         }`}
                                 >
                                     <p>{msg.message}</p>
@@ -304,20 +304,20 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 bg-zinc-900/30 border-t border-zinc-800">
+                <div className="p-4 bg-[#0a0a0a] border-t border-stone-800">
                     <form onSubmit={sendMessage} className="flex gap-2">
                         <input
                             type="text"
                             value={currentMessage}
                             onChange={(event) => setCurrentMessage(event.target.value)}
                             placeholder="Type a message..."
-                            className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-zinc-600"
+                            className="flex-1 bg-black border border-stone-800 text-stone-50 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600"
                         />
                         <button
                             type="submit"
                             disabled={!currentMessage.trim()}
                             aria-label="Send message"
-                            className="p-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white rounded-xl transition-colors shadow-lg shadow-indigo-500/20"
+                            className="p-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-500/20"
                         >
                             <Send className="h-5 w-5" />
                         </button>

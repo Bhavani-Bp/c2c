@@ -2,10 +2,18 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// In-memory storage for users (will be replaced with database later)
+// Structure: { userId: { userId, name, dob, passwordHash, email, isVerified, createdAt } }
+const users = {};
+
+// Store email verification codes
+const emailVerificationCodes = {};
 
 // API Routes
 
@@ -21,6 +29,177 @@ app.get('/', (req, res) => {
         ]
     });
 });
+
+// ========== AUTHENTICATION API ENDPOINTS ==========
+
+// Signup API
+app.post('/api/auth/signup', async (req, res) => {
+    console.log('📝 SIGNUP API CALLED:', { userId: req.body.userId, name: req.body.name });
+    const { userId, name, dob, password, email } = req.body;
+
+    // Validation
+    if (!userId || !name || !dob || !password || !email) {
+        console.log('❌ SIGNUP: Missing required fields');
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Check if user already exists
+    if (users[userId]) {
+        console.log('❌ SIGNUP: User ID already exists');
+        return res.status(400).json({ error: 'User ID already exists' });
+    }
+
+    try {
+        // Hash password
+        const saltRounds = 10;
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+
+        // Generate verification code
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Store verification code
+        emailVerificationCodes[email] = {
+            code: verificationCode,
+            userId,
+            expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
+        };
+
+        // Create user
+        users[userId] = {
+            userId,
+            name,
+            dob,
+            passwordHash,
+            email,
+            isVerified: false,
+            createdAt: new Date().toISOString()
+        };
+
+        // Log verification code (in production, send email)
+        console.log(`✅ SIGNUP SUCCESS - Verification code for ${email}: ${verificationCode}`);
+        console.log(`Total users: ${Object.keys(users).length}`);
+
+        res.json({
+            success: true,
+            message: 'Account created! Verification code sent to email (check console)',
+            userId
+        });
+    } catch (error) {
+        console.error('❌ SIGNUP ERROR:', error);
+        res.status(500).json({ error: 'Server error during signup' });
+    }
+});
+
+// Login API
+app.post('/api/auth/login', async (req, res) => {
+    console.log('🔐 LOGIN API CALLED:', { userId: req.body.userId });
+    const { userId, password } = req.body;
+
+    // Validation
+    if (!userId || !password) {
+        console.log('❌ LOGIN: Missing required fields');
+        return res.status(400).json({ error: 'User ID and password are required' });
+    }
+
+    // Check if user exists
+    const user = users[userId];
+    if (!user) {
+        console.log('❌ LOGIN: User not found');
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    try {
+        // Compare password
+        const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+
+        if (!isPasswordValid) {
+            console.log('❌ LOGIN: Invalid password');
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Check if email is verified
+        if (!user.isVerified) {
+            console.log('⚠️ LOGIN: Email not verified');
+            return res.status(403).json({
+                error: 'Email not verified',
+                requiresVerification: true
+            });
+        }
+
+        console.log('✅ LOGIN SUCCESS:', { userId, name: user.name });
+
+        // Return user data (excluding password)
+        res.json({
+            success: true,
+            user: {
+                userId: user.userId,
+                name: user.name,
+                email: user.email,
+                dob: user.dob
+            }
+        });
+    } catch (error) {
+        console.error('❌ LOGIN ERROR:', error);
+        res.status(500).json({ error: 'Server error during login' });
+    }
+});
+
+// Verify Email API
+app.post('/api/auth/verify-email', (req, res) => {
+    console.log('📧 VERIFY EMAIL API CALLED:', { email: req.body.email, code: req.body.code });
+    const { email, code } = req.body;
+
+    // Validation
+    if (!email || !code) {
+        console.log('❌ VERIFY EMAIL: Missing required fields');
+        return res.status(400).json({ error: 'Email and code are required' });
+    }
+
+    // Check verification code
+    const verification = emailVerificationCodes[email];
+    if (!verification) {
+        console.log('❌ VERIFY EMAIL: No verification code found');
+        return res.status(400).json({ error: 'No verification code found for this email' });
+    }
+
+    // Check expiration
+    if (Date.now() > verification.expiresAt) {
+        delete emailVerificationCodes[email];
+        console.log('❌ VERIFY EMAIL: Code expired');
+        return res.status(400).json({ error: 'Verification code expired' });
+    }
+
+    // Check code match
+    if (verification.code !== code) {
+        console.log('❌ VERIFY EMAIL: Invalid code');
+        return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    // Mark user as verified
+    const user = users[verification.userId];
+    if (user) {
+        user.isVerified = true;
+        delete emailVerificationCodes[email];
+        console.log('✅ EMAIL VERIFIED:', { userId: user.userId, email });
+
+        res.json({
+            success: true,
+            message: 'Email verified successfully',
+            user: {
+                userId: user.userId,
+                name: user.name,
+                email: user.email,
+                dob: user.dob
+            }
+        });
+    } else {
+        console.log('❌ VERIFY EMAIL: User not found');
+        res.status(404).json({ error: 'User not found' });
+    }
+});
+
+// ========== ROOM API ENDPOINTS ==========
+
 
 // Create Room API
 app.post('/api/create-room', (req, res) => {

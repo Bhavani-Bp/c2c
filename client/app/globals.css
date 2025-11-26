@@ -6,12 +6,21 @@
   --color-foreground: var(--foreground);
 }
 
-/* Force dark mode defaults for this app */
+/* Unified 3-Color Theme */
 :root {
-  --background: #09090b;
-  /* zinc-950 */
-  --foreground: #fafafa;
-  /* zinc-50 */
+  /* Magic Black */
+  --background: #000000;
+  --surface: #0a0a0a;
+
+  /* Creamy White */
+  --foreground: #fafaf9;
+  --text-primary: #fafaf9;
+  --text-secondary: #a8a29e;
+
+  /* Premium Blue */
+  --accent-blue: #3b82f6;
+  --accent-blue-light: #60a5fa;
+  --accent-blue-dark: #2563eb;
 }
 
 body {
@@ -59,5 +68,33 @@ body {
     text-shadow: 0 0 30px rgba(99, 102, 241, 0.8),
       0 0 60px rgba(99, 102, 241, 0.5),
       0 0 90px rgba(99, 102, 241, 0.3);
+  }
+}
+
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-10px);
+  }
+
+  75% {
+    transform: translateX(10px);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
