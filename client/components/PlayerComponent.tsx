@@ -39,13 +39,6 @@ export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay
 
     const videoId = getVideoId(url);
 
-    // Prevent HMR from breaking socket in development
-    useEffect(() => {
-        if (typeof window !== "undefined") {
-            // no module usage here
-        }
-    }, [url]);
-
     // Socket Sync Listeners
     useEffect(() => {
         if (!socket) return;
@@ -127,7 +120,7 @@ export default function PlayerComponent({ url, socket, roomId, isPlaying, onPlay
     };
 
     const onPlayerError: YouTubeProps['onError'] = (event) => {
-        console.error('❌ Native Player Error:', event.data);
+        console.error('❌ Player Error:', event.data);
         setError('Video playback error. Code: ' + event.data);
     };
 

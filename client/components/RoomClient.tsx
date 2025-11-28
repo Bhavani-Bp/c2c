@@ -4,7 +4,7 @@ export const unstable_noStore = true;
 
 import { useEffect, useState, useRef } from "react";
 import { Socket } from "socket.io-client";
-import { Send, MessageSquare, User, Link as LinkIcon, Search, Play, List, Plus, Trash2 } from "lucide-react";
+import { Send, MessageSquare, User, Link as LinkIcon, Search, Play, List, Plus, Trash2, History } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
 import { getSocket } from "@/lib/socket";
 
@@ -13,6 +13,13 @@ interface Message {
     message: string;
     username: string;
     time: string;
+}
+
+interface RecentVideo {
+    videoId: string;
+    title: string;
+    thumbnail: string;
+    playedAt: number;
 }
 
 interface RoomClientProps {
@@ -36,6 +43,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [showResults, setShowResults] = useState(false);
     const [playlist, setPlaylist] = useState<any[]>([]);
     const [showPlaylist, setShowPlaylist] = useState(false);
+    const [recentVideos, setRecentVideos] = useState<RecentVideo[]>([]);
+    const [showRecent, setShowRecent] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -135,6 +144,20 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         module.hot?.decline();
     }
 
+    // Load recently played videos from localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('recentVideos');
+            if (stored) {
+                try {
+                    setRecentVideos(JSON.parse(stored));
+                } catch (e) {
+                    console.error('Failed to parse recent videos:', e);
+                }
+            }
+        }
+    }, []);
+
     // Auto-scroll chat to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -208,7 +231,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         }
     };
 
-    const playVideo = async (videoId: string) => {
+    const playVideo = async (videoId: string, title?: string, thumbnail?: string) => {
         setShowResults(false);
         setIsPlaying(false);
 
@@ -218,6 +241,26 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         setInputUrl("");
         socket.emit("video_url_change", { room: roomId, url: videoUrl });
         setSyncStatus('Loading video...');
+
+        // Save to recently played
+        if (typeof window !== 'undefined') {
+            const recent = JSON.parse(localStorage.getItem('recentVideos') || '[]');
+            const newVideo: RecentVideo = {
+                videoId,
+                title: title || `Video ${videoId}`,
+                thumbnail: thumbnail || `https://img.youtube.com/vi/${videoId}/default.jpg`,
+                playedAt: Date.now()
+            };
+
+            // Remove duplicates and add to start
+            const filtered = recent.filter((v: RecentVideo) => v.videoId !== videoId);
+            filtered.unshift(newVideo);
+
+            // Keep only last 20 videos
+            const updated = filtered.slice(0, 20);
+            localStorage.setItem('recentVideos', JSON.stringify(updated));
+            setRecentVideos(updated);
+        }
 
         setTimeout(() => setSyncStatus(''), 3000);
     };
@@ -281,6 +324,13 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                         >
                             <List className="h-5 w-5" />
                         </button>
+                        <button
+                            onClick={() => setShowRecent(!showRecent)}
+                            className={`p-2 rounded-xl transition-colors border border-stone-800 ${showRecent ? 'bg-blue-600 border-blue-500 text-white' : 'bg-stone-900 text-stone-400 hover:text-stone-200'}`}
+                            title="Recently Played"
+                        >
+                            <History className="h-5 w-5" />
+                        </button>
                     </div>
 
                     {/* Search Results Dropdown */}
@@ -302,7 +352,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                         className="flex gap-3 p-2 hover:bg-stone-900 rounded-lg group transition-colors"
                                     >
                                         <div
-                                            onClick={() => playVideo(video.videoId)}
+                                            onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
                                             className="relative w-32 aspect-video rounded-md overflow-hidden bg-stone-800 flex-shrink-0 cursor-pointer"
                                         >
                                             <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
@@ -312,7 +362,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                         </div>
                                         <div className="flex-1 min-w-0 flex flex-col justify-center">
                                             <h4
-                                                onClick={() => playVideo(video.videoId)}
+                                                onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
                                                 className="text-sm font-medium text-stone-200 line-clamp-2 group-hover:text-blue-400 transition-colors cursor-pointer"
                                             >
                                                 {video.title}
@@ -363,7 +413,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                 playlist.map((video, idx) => (
                                     <div key={`${video.videoId}-${idx}`} className="flex gap-2 p-2 bg-stone-900/50 hover:bg-stone-900 rounded-lg group">
                                         <div
-                                            onClick={() => playVideo(video.videoId)}
+                                            onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
                                             className="w-24 aspect-video bg-stone-800 rounded overflow-hidden flex-shrink-0 cursor-pointer relative"
                                         >
                                             <img src={video.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -373,7 +423,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                         </div>
                                         <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                                             <p
-                                                onClick={() => playVideo(video.videoId)}
+                                                onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
                                                 className="text-xs font-medium text-stone-300 line-clamp-2 cursor-pointer hover:text-blue-400"
                                             >
                                                 {video.title}
@@ -386,6 +436,60 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                                                 >
                                                     <Trash2 className="w-3 h-3" />
                                                 </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Recently Played Sidebar Overlay */}
+                {showRecent && (
+                    <div className="absolute top-[73px] right-0 bottom-0 w-80 bg-[#0a0a0a]/95 backdrop-blur-md border-l border-stone-800 z-40 flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-stone-800 flex justify-between items-center">
+                            <h3 className="font-semibold text-stone-50 flex items-center gap-2">
+                                <History className="w-4 h-4 text-blue-500" />
+                                Recently Played
+                                <span className="text-xs bg-stone-800 text-stone-400 px-2 py-0.5 rounded-full">
+                                    {recentVideos.length}
+                                </span>
+                            </h3>
+                            <button onClick={() => setShowRecent(false)} className="text-stone-500 hover:text-stone-300">
+                                ×
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                            {recentVideos.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-40 text-stone-500 text-sm">
+                                    <History className="w-8 h-8 mb-2 opacity-20" />
+                                    <p>No recent videos</p>
+                                    <p className="text-xs">Play a video to get started</p>
+                                </div>
+                            ) : (
+                                recentVideos.map((video, idx) => (
+                                    <div key={`${video.videoId}-${idx}`} className="flex gap-2 p-2 bg-stone-900/50 hover:bg-stone-900 rounded-lg group">
+                                        <div
+                                            onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
+                                            className="w-24 aspect-video bg-stone-800 rounded overflow-hidden flex-shrink-0 cursor-pointer relative"
+                                        >
+                                            <img src={video.thumbnail} alt="" className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 transition-colors">
+                                                <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100" />
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                            <p
+                                                onClick={() => playVideo(video.videoId, video.title, video.thumbnail)}
+                                                className="text-xs font-medium text-stone-300 line-clamp-2 cursor-pointer hover:text-blue-400"
+                                            >
+                                                {video.title}
+                                            </p>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] text-stone-600">
+                                                    {new Date(video.playedAt).toLocaleDateString()}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
