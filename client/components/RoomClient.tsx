@@ -239,7 +239,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         setUrl(videoUrl);
         setInputUrl("");
-        socket.emit("video_url_change", { room: roomId, url: videoUrl });
+        socket?.emit("video_url_change", { room: roomId, url: videoUrl });
         setSyncStatus('Loading video...');
 
         // Save to recently played
