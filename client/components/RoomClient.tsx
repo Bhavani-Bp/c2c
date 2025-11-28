@@ -1,9 +1,12 @@
 "use client";
 
+export const unstable_noStore = true;
+
 import { useEffect, useState, useRef } from "react";
-import { io, Socket } from "socket.io-client";
-import { Send, MessageSquare, User, Link as LinkIcon } from "lucide-react";
+import { Socket } from "socket.io-client";
+import { Send, MessageSquare, User, Link as LinkIcon, Search, Play, List, Plus, Trash2 } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
+import { getSocket } from "@/lib/socket";
 
 
 interface Message {
@@ -28,38 +31,45 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
     const [roomUsers, setRoomUsers] = useState<Array<{ id: string, name: string }>>([]);
     const [syncStatus, setSyncStatus] = useState<string>('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showResults, setShowResults] = useState(false);
+    const [playlist, setPlaylist] = useState<any[]>([]);
+    const [showPlaylist, setShowPlaylist] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
 
     useEffect(() => {
-        // Initialize Socket Connection with WebSocket transport
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
-        const socketInstance = io(socketUrl, {
-            transports: ["websocket", "polling"], // Try WebSocket first, fallback to polling
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
-        });
+        // Initialize Socket Connection with global socket instance
+        const socketInstance = getSocket();
         setSocket(socketInstance);
 
         // Connection status handlers
-        socketInstance.on('connect', () => {
+        const onConnect = () => {
             setConnectionStatus('connected');
             setSyncStatus('Connected to room');
             // Join Room after connection is established
             socketInstance.emit("join_room", { room: roomId, name: userName });
-        });
+        };
 
-        socketInstance.on('disconnect', () => {
+        const onDisconnect = () => {
             setConnectionStatus('disconnected');
             setSyncStatus('Disconnected from room');
-        });
+        };
 
-        socketInstance.on('connect_error', () => {
+        const onConnectError = () => {
             setConnectionStatus('disconnected');
             setSyncStatus('Connection failed');
-        });
+        };
+
+        if (socketInstance.connected) {
+            onConnect();
+        }
+
+        socketInstance.on('connect', onConnect);
+        socketInstance.on('disconnect', onDisconnect);
+        socketInstance.on('connect_error', onConnectError);
 
         // Listen for Messages
         socketInstance.on("receive_message", (data: Message) => {
@@ -93,15 +103,37 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
 
 
+        // Listen for Playlist Updates
+        socketInstance.on("receive_playlist", (list) => {
+            setPlaylist(list);
+        });
+
         // Request current video state for late joiners
         socketInstance.emit("get_video_state", { room: roomId });
 
+        // Heartbeat
+        socketInstance.on("ping", () => socketInstance.emit("pong"));
+
         // Cleanup
         return () => {
-            socketInstance.disconnect();
-
+            socketInstance.off('connect', onConnect);
+            socketInstance.off('disconnect', onDisconnect);
+            socketInstance.off('connect_error', onConnectError);
+            socketInstance.off("receive_message");
+            socketInstance.off('room_users');
+            socketInstance.off("receive_video_url_change");
+            socketInstance.off("receive_video_state");
+            socketInstance.off("receive_playlist");
+            socketInstance.off("ping");
         };
     }, [roomId, userName]);
+
+    // Prevent HMR from breaking socket in development
+    // Prevent HMR from breaking socket in development
+    if (process.env.NODE_ENV === "development" && typeof module !== "undefined") {
+        // @ts-ignore
+        module.hot?.decline();
+    }
 
     // Auto-scroll chat to bottom
     useEffect(() => {
@@ -124,31 +156,70 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         }
     };
 
-    const handleUrlSubmit = (e: React.FormEvent) => {
+    const handleUrlSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (inputUrl.trim() && socket) {
             let validUrl = inputUrl.trim();
 
-            // Handle different URL formats
-            if (!validUrl.startsWith('http')) {
-                validUrl = `https://${validUrl}`;
+            // Check if it's a URL
+            const isUrl = validUrl.startsWith('http') || validUrl.includes('www.') || validUrl.includes('.com');
+
+            if (isUrl) {
+                // Handle different URL formats
+                if (!validUrl.startsWith('http')) {
+                    validUrl = `https://${validUrl}`;
+                }
+
+                // Convert YouTube share URLs to watch URLs
+                if (validUrl.includes('youtu.be/')) {
+                    const videoId = validUrl.split('youtu.be/')[1].split('?')[0];
+                    validUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                }
+
+                console.log('Setting video URL:', validUrl);
+                setUrl(validUrl);
+                setInputUrl("");
+                setIsPlaying(false);
+                setShowResults(false);
+                setSyncStatus('Loading new video...');
+                socket.emit("video_url_change", { room: roomId, url: validUrl });
+
+                setTimeout(() => setSyncStatus(''), 2000);
+            } else {
+                // It's a search query
+                handleSearch(validUrl);
             }
-
-            // Convert YouTube share URLs to watch URLs
-            if (validUrl.includes('youtu.be/')) {
-                const videoId = validUrl.split('youtu.be/')[1].split('?')[0];
-                validUrl = `https://www.youtube.com/watch?v=${videoId}`;
-            }
-
-            console.log('Setting video URL:', validUrl);
-            setUrl(validUrl);
-            setInputUrl("");
-            setIsPlaying(false);
-            setSyncStatus('Loading new video...');
-            socket.emit("video_url_change", { room: roomId, url: validUrl });
-
-            setTimeout(() => setSyncStatus(''), 2000);
         }
+    };
+
+    const handleSearch = async (query: string) => {
+        setIsSearching(true);
+        setShowResults(true);
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'}/api/search?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            if (data.success) {
+                setSearchResults(data.videos);
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const playVideo = async (videoId: string) => {
+        setShowResults(false);
+        setIsPlaying(false);
+
+        // Use official YouTube URL only
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        setUrl(videoUrl);
+        setInputUrl("");
+        socket.emit("video_url_change", { room: roomId, url: videoUrl });
+        setSyncStatus('Loading video...');
+
+        setTimeout(() => setSyncStatus(''), 3000);
     };
 
     const handlePlay = () => {
@@ -163,33 +234,166 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
 
 
+    const addToPlaylist = (video: any) => {
+        if (socket) {
+            socket.emit("add_to_playlist", { room: roomId, video });
+            setSyncStatus(`Added to playlist`);
+            setTimeout(() => setSyncStatus(''), 2000);
+        }
+    };
+
+    const removeFromPlaylist = (videoId: string) => {
+        if (socket) {
+            socket.emit("remove_from_playlist", { room: roomId, videoId });
+        }
+    };
+
     return (
         <div className="flex flex-col lg:flex-row h-screen bg-black text-stone-50 overflow-hidden font-sans">
             {/* Left Side: Video Player Area */}
             <div className="flex-1 flex flex-col bg-black border-r border-stone-800 relative">
                 {/* URL Input Bar */}
-                <div className="p-4 bg-[#0a0a0a] border-b border-stone-800 flex gap-2 items-center">
-                    <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <LinkIcon className="h-5 w-5 text-blue-500" />
-                    </div>
-                    <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
-                        <input
-                            type="text"
-                            placeholder="Try: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                            value={inputUrl}
-                            onChange={(e) => setInputUrl(e.target.value)}
-                            className="flex-1 bg-black border border-stone-800 text-stone-50 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600"
-                        />
+                <div className="p-4 bg-[#0a0a0a] border-b border-stone-800 flex flex-col gap-2 relative z-50">
+                    <div className="flex gap-2 items-center">
+                        <div className="p-2 bg-blue-500/10 rounded-lg">
+                            <Search className="h-5 w-5 text-blue-500" />
+                        </div>
+                        <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="Search YouTube or paste URL..."
+                                value={inputUrl}
+                                onChange={(e) => setInputUrl(e.target.value)}
+                                className="flex-1 bg-black border border-stone-800 text-stone-50 text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-stone-600"
+                            />
+                            <button
+                                type="submit"
+                                aria-label="Search or Load"
+                                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-stone-300 rounded-xl transition-colors border border-stone-800 text-sm font-medium"
+                            >
+                                {isSearching ? 'Searching...' : 'Go'}
+                            </button>
+                        </form>
                         <button
-                            type="submit"
-                            aria-label="Load video"
-                            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-stone-300 rounded-xl transition-colors border border-stone-800 text-sm font-medium"
+                            onClick={() => setShowPlaylist(!showPlaylist)}
+                            className={`p-2 rounded-xl transition-colors border border-stone-800 ${showPlaylist ? 'bg-blue-600 border-blue-500 text-white' : 'bg-stone-900 text-stone-400 hover:text-stone-200'}`}
+                            title="Toggle Playlist"
                         >
-                            Load
+                            <List className="h-5 w-5" />
                         </button>
-                    </form>
+                    </div>
 
+                    {/* Search Results Dropdown */}
+                    {showResults && searchResults.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 bg-[#0a0a0a] border-b border-stone-800 max-h-[60vh] overflow-y-auto shadow-2xl z-50">
+                            <div className="p-2 grid grid-cols-1 gap-2">
+                                <div className="flex justify-between items-center px-2 py-1">
+                                    <span className="text-xs text-stone-500 font-medium">Search Results</span>
+                                    <button
+                                        onClick={() => setShowResults(false)}
+                                        className="text-xs text-stone-500 hover:text-stone-300"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                                {searchResults.map((video) => (
+                                    <div
+                                        key={video.videoId}
+                                        className="flex gap-3 p-2 hover:bg-stone-900 rounded-lg group transition-colors"
+                                    >
+                                        <div
+                                            onClick={() => playVideo(video.videoId)}
+                                            className="relative w-32 aspect-video rounded-md overflow-hidden bg-stone-800 flex-shrink-0 cursor-pointer"
+                                        >
+                                            <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                <Play className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" fill="currentColor" />
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                            <h4
+                                                onClick={() => playVideo(video.videoId)}
+                                                className="text-sm font-medium text-stone-200 line-clamp-2 group-hover:text-blue-400 transition-colors cursor-pointer"
+                                            >
+                                                {video.title}
+                                            </h4>
+                                            <div className="flex justify-between items-center mt-1">
+                                                <p className="text-xs text-stone-500 truncate">
+                                                    {video.channel}
+                                                </p>
+                                                <button
+                                                    onClick={() => addToPlaylist(video)}
+                                                    className="p-1.5 hover:bg-stone-800 rounded-full text-stone-500 hover:text-blue-400 transition-colors"
+                                                    title="Add to Playlist"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
+
+                {/* Playlist Sidebar Overlay */}
+                {showPlaylist && (
+                    <div className="absolute top-[73px] right-0 bottom-0 w-80 bg-[#0a0a0a]/95 backdrop-blur-md border-l border-stone-800 z-40 flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-stone-800 flex justify-between items-center">
+                            <h3 className="font-semibold text-stone-50 flex items-center gap-2">
+                                <List className="w-4 h-4 text-blue-500" />
+                                Playlist
+                                <span className="text-xs bg-stone-800 text-stone-400 px-2 py-0.5 rounded-full">
+                                    {playlist.length}
+                                </span>
+                            </h3>
+                            <button onClick={() => setShowPlaylist(false)} className="text-stone-500 hover:text-stone-300">
+                                ×
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                            {playlist.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-40 text-stone-500 text-sm">
+                                    <List className="w-8 h-8 mb-2 opacity-20" />
+                                    <p>Playlist is empty</p>
+                                    <p className="text-xs">Add videos from search</p>
+                                </div>
+                            ) : (
+                                playlist.map((video, idx) => (
+                                    <div key={`${video.videoId}-${idx}`} className="flex gap-2 p-2 bg-stone-900/50 hover:bg-stone-900 rounded-lg group">
+                                        <div
+                                            onClick={() => playVideo(video.videoId)}
+                                            className="w-24 aspect-video bg-stone-800 rounded overflow-hidden flex-shrink-0 cursor-pointer relative"
+                                        >
+                                            <img src={video.thumbnail} alt="" className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 transition-colors">
+                                                <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100" />
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                            <p
+                                                onClick={() => playVideo(video.videoId)}
+                                                className="text-xs font-medium text-stone-300 line-clamp-2 cursor-pointer hover:text-blue-400"
+                                            >
+                                                {video.title}
+                                            </p>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] text-stone-600">{video.channel}</span>
+                                                <button
+                                                    onClick={() => removeFromPlaylist(video.videoId)}
+                                                    className="text-stone-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Player Container */}
                 <div className="flex-1 p-4 flex items-center justify-center">

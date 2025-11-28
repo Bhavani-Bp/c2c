@@ -1,6 +1,9 @@
+require('dotenv').config();
 const express = require('express');
+const axios = require('axios');
 const http = require('http');
 const { Server } = require('socket.io');
+// const ytdl = require('@distube/ytdl-core');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 
@@ -30,7 +33,59 @@ app.get('/', (req, res) => {
     });
 });
 
+
+// ========== YOUTUBE API ENDPOINTS ==========
+
+// Search API
+app.get('/api/search', async (req, res) => {
+    console.log('🔍 SEARCH API CALLED:', { query: req.query.query });
+    const { query } = req.query;
+
+    if (!query) {
+        return res.status(400).json({ error: 'Query is required' });
+    }
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+        console.error('❌ SEARCH ERROR: Missing YouTube API Key');
+        return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
+    }
+
+    try {
+        const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+            params: {
+                part: 'snippet',
+                q: query,
+                type: 'video',
+                maxResults: 50,
+                key: apiKey
+            }
+        });
+
+        const videos = response.data.items.map(item => ({
+            videoId: item.id.videoId,
+            title: item.snippet.title,
+            thumbnail: item.snippet.thumbnails.medium.url,
+            channel: item.snippet.channelTitle,
+            description: item.snippet.description,
+            publishDate: item.snippet.publishedAt
+        }));
+
+        console.log(`✅ SEARCH SUCCESS: Found ${videos.length} videos`);
+        res.json({ success: true, videos });
+    } catch (error) {
+        console.error('❌ SEARCH ERROR:', error.response ? error.response.data : error.message);
+        res.status(500).json({ error: 'Failed to fetch videos from YouTube' });
+    }
+});
+
+// Play API (Extract Stream URL) - REMOVED
+// app.get('/api/play', async (req, res) => {
+//     res.status(410).json({ error: 'This endpoint has been removed.' });
+// });
+
 // ========== AUTHENTICATION API ENDPOINTS ==========
+
 
 // Signup API
 app.post('/api/auth/signup', async (req, res) => {
@@ -373,6 +428,18 @@ const verificationCodes = {};
 io.on('connection', (socket) => {
     console.log(`User Connected: ${socket.id}`);
 
+    // Heartbeat to keep connection alive
+    const heartbeat = setInterval(() => {
+        socket.emit("ping", Date.now());
+    }, 5000);
+
+    socket.on("pong", () => { });
+
+    // Clear heartbeat on disconnect
+    socket.on('disconnect', () => {
+        clearInterval(heartbeat);
+    });
+
     // Join Room Event
     socket.on('join_room', (data) => {
         const { room, name } = data;
@@ -387,7 +454,8 @@ io.on('connection', (socket) => {
                     isPlaying: false,
                     currentTime: 0,
                     lastUpdated: Date.now()
-                }
+                },
+                playlist: []
             };
         }
 
@@ -413,6 +481,11 @@ io.on('connection', (socket) => {
 
         // Send current room users to all users
         io.to(room).emit('room_users', rooms[room].users);
+
+        // Send current playlist to new user
+        if (rooms[room].playlist && rooms[room].playlist.length > 0) {
+            socket.emit('receive_playlist', rooms[room].playlist);
+        }
     });
 
     // Send Message Event
@@ -461,6 +534,53 @@ io.on('connection', (socket) => {
         }
         console.log(`Video URL changed in room ${room}:`, url);
         socket.to(room).emit('receive_video_url_change', { url });
+    });
+
+    // Playlist Events
+    socket.on('add_to_playlist', (data) => {
+        const { room, video } = data;
+        if (rooms[room]) {
+            if (!rooms[room].playlist) rooms[room].playlist = [];
+            // Check for duplicates
+            const exists = rooms[room].playlist.find(v => v.videoId === video.videoId);
+            if (!exists) {
+                rooms[room].playlist.push(video);
+                io.to(room).emit('receive_playlist', rooms[room].playlist);
+
+                // Notify chat
+                io.to(room).emit('receive_message', {
+                    message: `Added "${video.title}" to playlist`,
+                    username: 'System',
+                    time: new Date().toLocaleTimeString(),
+                });
+            }
+        }
+    });
+
+    socket.on('remove_from_playlist', (data) => {
+        const { room, videoId } = data;
+        if (rooms[room] && rooms[room].playlist) {
+            rooms[room].playlist = rooms[room].playlist.filter(v => v.videoId !== videoId);
+            io.to(room).emit('receive_playlist', rooms[room].playlist);
+        }
+    });
+
+    socket.on('play_from_playlist', (data) => {
+        const { room, videoId } = data;
+        if (rooms[room] && rooms[room].playlist) {
+            const video = rooms[room].playlist.find(v => v.videoId === videoId);
+            if (video) {
+                // Remove from playlist if desired, or keep it. For now, let's keep it.
+                // Actually, usually "play next" implies removing from queue, but "play specific" might not.
+                // Let's implement "remove after play" logic in the client or a separate event if needed.
+                // For now, just play it.
+
+                // We'll handle the actual URL fetching in the client for now to reuse the existing logic,
+                // OR we can do it here. Let's stick to client-driven playback for consistency with current architecture.
+                // But wait, we need to tell everyone to play this video.
+                // The client calling this will then trigger 'video_url_change'.
+            }
+        }
     });
 
     // Get current video state (for late joiners)

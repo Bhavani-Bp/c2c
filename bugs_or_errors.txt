@@ -1,0 +1,31 @@
+# Bugs and Errors Log
+
+## Browser Automation Issues
+- **Issue**: Unable to click "Create New Room" button on the home page.
+- **Status**: RESOLVED
+- **Fix**: Added unique IDs (`btn-create-room`, `btn-submit-create-room`, `btn-join-room`) to the interactive elements in `page.tsx`.
+
+## Runtime Errors
+- **Issue**: Hydration error in `layout.tsx` due to browser extension attributes.
+- **Status**: RESOLVED
+- **Fix**: Added `suppressHydrationWarning` to the `<html>` tag in `client/app/layout.tsx`.
+
+- **Issue**: `ReferenceError: module is not defined` in `RoomClient.tsx`.
+- **Status**: RESOLVED
+- **Fix**: Added `typeof module !== 'undefined'` check before accessing `module.hot`.
+
+- **Issue**: `ReferenceError: module is not defined` in `PlayerComponent.tsx` causing video player crash.
+- **Status**: RESOLVED
+- **Fix**: Removed all unsafe `module.hot` code and replaced with safe browser check `if (typeof window !== "undefined")`.
+
+## Verification Status
+- **Unit Tests**: PASSED (7 suites, 42 tests).
+- **Manual Verification**:
+    - App build successful.
+    - Server and Client running.
+    - User successfully created and joined a room.
+    - Video search and playback working without crashes.
+    - No console errors related to `module`.
+- **Code Review**:
+    - All reported issues fixed.
+    - Video player uses official YouTube IFrame API.

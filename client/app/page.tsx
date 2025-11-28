@@ -159,6 +159,7 @@ export default function Home() {
           {mode === 'home' && (
             <div className="space-y-4">
               <button
+                id="btn-create-room"
                 onClick={() => setMode('join')}
                 className="w-full py-4 bg-stone-50 hover:bg-blue-500 text-black hover:text-stone-50 border border-stone-800 hover:border-transparent rounded-xl transition-all duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:shadow-[0_0_50px_rgba(59,130,246,0.4)] flex items-center justify-center gap-3 group"
               >
@@ -167,6 +168,7 @@ export default function Home() {
               </button>
 
               <Link
+                id="btn-join-room"
                 href="/join"
                 className="w-full py-4 bg-black hover:bg-stone-900 text-stone-50 border border-stone-800 hover:border-stone-700 rounded-xl transition-all duration-300 shadow-[0_0_30px_rgba(59,130,246,0.1)] hover:shadow-[0_0_50px_rgba(59,130,246,0.2)] flex items-center justify-center gap-3 group"
               >
@@ -222,6 +224,7 @@ export default function Home() {
                 )}
 
                 <button
+                  id="btn-submit-create-room"
                   type="submit"
                   disabled={loading || !displayName || !email}
                   className="w-full py-2.5 bg-stone-50 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-black hover:text-stone-50 font-medium rounded-lg transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(59,130,246,0.4)] flex items-center justify-center gap-2"
