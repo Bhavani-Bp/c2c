@@ -8,7 +8,15 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: [
+        "http://localhost:3000",
+        "https://c2c-kappa.vercel.app"
+    ],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+}));
 app.use(express.json());
 
 // In-memory storage for users (will be replaced with database later)
@@ -413,8 +421,12 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow all origins for Vercel deployment testing
-        methods: ["GET", "POST"]
+        origin: [
+            "http://localhost:3000",
+            "https://c2c-kappa.vercel.app"
+        ],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
