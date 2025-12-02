@@ -219,7 +219,7 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
         setIsSearching(true);
         setShowResults(true);
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'}/api/search?query=${encodeURIComponent(query)}`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/search?query=${encodeURIComponent(query)}`);
             const data = await response.json();
             if (data.success) {
                 setSearchResults(data.videos);
