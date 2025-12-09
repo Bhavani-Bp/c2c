@@ -24,6 +24,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+console.log('✅ CORS configured for:', [
+    "http://localhost:3000",
+    "https://c2c-kappa.vercel.app",
+    "https://thorough-victory-production.up.railway.app"
+]);
+
 // In-memory storage for users (will be replaced with database later)
 // Structure: { userId: { userId, name, dob, passwordHash, email, isVerified, createdAt } }
 const users = {};
