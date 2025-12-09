@@ -1,185 +1,189 @@
-# Railway Deployment Guide
+# Railway Deployment Guide - Monorepo Fix
 
-## ✅ Code Changes Made
+## ⚠️ Your Repo Structure (The Problem)
 
-Your backend is now Railway-ready! Here's what was configured:
-
-### 1. Dynamic PORT ✅
-```javascript
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-    console.log(`SERVER RUNNING ON PORT ${PORT}`);
-});
+Your repository is a **monorepo** with this structure:
 ```
-Railway will provide the PORT automatically.
-
-### 2. Trust Proxy ✅ (Added)
-```javascript
-app.set("trust proxy", 1);
-```
-Allows Railway's proxy to correctly handle cookies and IP addresses.
-
-### 3. CORS Configuration ✅
-```javascript
-app.use(cors({
-    origin: [
-        "http://localhost:3000",
-        "https://c2c-kappa.vercel.app"
-    ],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true
-}));
+connect_to_connect/
+├── client/          ← Frontend (Next.js)
+├── server/          ← Backend (Node.js + Socket.IO)
+│   ├── package.json ✅
+│   ├── index.js     ✅
+│   └── ...
+├── requirements.txt ❌ (This confuses Railway!)
+└── package.json
 ```
 
-### 4. Socket.IO Setup ✅
-```javascript
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: [
-            "http://localhost:3000",
-            "https://c2c-kappa.vercel.app"
-        ],
-        methods: ["GET", "POST"],
-        credentials: true
-    }
-});
+**Problem:** Railway sees `requirements.txt` at the root and thinks it's a Python project!
+
+## ✅ Solutions Implemented
+
+### Solution 1: Railway Configuration Files (Recommended)
+
+I've created two configuration files that tell Railway to use the `server/` directory:
+
+#### **railway.json**
+```json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "cd server && npm install"
+  },
+  "deploy": {
+    "startCommand": "cd server && npm start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
 ```
+
+#### **nixpacks.toml**
+```toml
+[phases.setup]
+nixPkgs = ["nodejs-18_x"]
+
+[phases.install]
+cmds = ["cd server && npm ci"]
+
+[phases.build]
+cmds = ["echo 'Build complete'"]
+
+[phases.start]
+cmd = "cd server && npm start"
+```
+
+These files explicitly tell Railway:
+- ✅ Use Node.js 18
+- ✅ Install from `server/package.json`
+- ✅ Start from `server/` directory
+- ✅ Ignore the Python `requirements.txt`
 
 ---
 
-## 📋 Railway Deployment Steps
+## 🚀 Railway Deployment Steps (Updated)
 
-### Step 1: Create Railway Account
-1. Go to https://railway.app
-2. Sign up with GitHub
-3. Click "New Project"
+### Step 1: Commit New Config Files
+```bash
+git add railway.json nixpacks.toml
+git commit -m "Add Railway monorepo configuration"
+git push
+```
 
-### Step 2: Deploy from GitHub
-1. Click "Deploy from GitHub repo"
-2. Select your `c2c` repository
-3. Railway will auto-detect Node.js
+### Step 2: Deploy to Railway
+
+**Option A: Using Root Directory Setting (Easiest)**
+1. Go to Railway Dashboard
+2. Create New Project → Deploy from GitHub
+3. Select your `c2c` repository
+4. In **Settings** → **Service Settings**:
+   - Set **Root Directory** = `server`
+   - This tells Railway to only look at the server folder
+
+**Option B: Use Config Files**
+1. Deploy normally from GitHub
+2. Railway will detect `railway.json` and `nixpacks.toml`
+3. It will automatically use the `server/` directory
 
 ### Step 3: Set Environment Variables
-In Railway Dashboard → Variables, add:
-
+In Railway Dashboard → Variables:
 ```
 YOUTUBE_API_KEY=your_youtube_api_key_here
 NODE_ENV=production
 ```
 
-**Important:** Railway automatically provides `PORT`, don't set it manually.
-
 ### Step 4: Get Railway URL
-After deployment, Railway gives you a URL like:
-```
-https://your-app-name.up.railway.app
-```
+After deployment: `https://your-app-name.up.railway.app`
 
-### Step 5: Update Vercel Environment Variables
-In Vercel Dashboard → Settings → Environment Variables:
-
+### Step 5: Update Vercel
+Set in Vercel environment variables:
 ```
 NEXT_PUBLIC_BACKEND_URL=https://your-app-name.up.railway.app
 NEXT_PUBLIC_SOCKET_URL=https://your-app-name.up.railway.app
 NEXT_PUBLIC_API_URL=https://your-app-name.up.railway.app
 ```
 
-### Step 6: Redeploy Frontend
-1. Go to Vercel Dashboard
-2. Click "Redeploy"
-3. Wait for deployment to complete
+---
+
+## 🔧 Alternative: Remove requirements.txt
+
+If you don't need `requirements.txt`, you can:
+```bash
+git rm requirements.txt
+git commit -m "Remove unused requirements.txt"
+git push
+```
+
+This will stop confusing Railway.
+
+---
+
+## ✅ What's in server/package.json (Already Correct)
+
+```json
+{
+  "name": "server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"  ✅ CORRECT!
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    ...
+  }
+}
+```
+
+---
+
+## 🎯 Why This Fixes the Error
+
+**Before:**
+- Railway scans root directory
+- Finds `requirements.txt`
+- Thinks: "This is Python!"
+- Tries to run Python build
+- Fails: "No start command found"
+
+**After:**
+- Railway reads `railway.json` or Root Directory setting
+- Uses `server/` directory only
+- Finds `package.json` with `"start": "node index.js"`
+- Thinks: "This is Node.js!"
+- Successfully builds and deploys
 
 ---
 
 ## 🧪 Testing
 
-### 1. Test Backend Health
-Open in browser:
-```
-https://your-app-name.up.railway.app/
-```
+1. **Check Railway Logs:**
+   - Should see: "Detected Node.js"
+   - Should NOT see: "Detected Python"
 
-Expected response:
-```json
-{
-  "message": "Connect to Connect Server is running!",
-  "status": "active",
-  "availableEndpoints": [...]
-}
-```
+2. **Test Backend:**
+   ```
+   https://your-app.up.railway.app/
+   ```
+   Should return: `{ "message": "Connect to Connect Server is running!" }`
 
-### 2. Test Search API
-```
-https://your-app-name.up.railway.app/api/search?query=test
-```
-
-Expected response:
-```json
-{
-  "success": true,
-  "videos": [...]
-}
-```
-
-### 3. Test in Production
-1. Open your Vercel app
-2. Create a room
-3. Search for videos
-4. Test video sync between users
+3. **Test Search API:**
+   ```
+   https://your-app.up.railway.app/api/search?query=test
+   ```
 
 ---
 
-## 📦 What's Included
+## 📋 Deployment Checklist
 
-- ✅ WebSocket support (Socket.IO)
-- ✅ REST APIs (search, create-room, join-room, etc.)
-- ✅ Environment variables
-- ✅ CORS configured
-- ✅ Proxy support
-- ✅ Auto-scaling
-- ✅ Free tier (500 hours/month)
+- [x] `server/package.json` has `"start": "node index.js"` ✅
+- [x] Created `railway.json` configuration ✅
+- [x] Created `nixpacks.toml` configuration ✅
+- [ ] Commit and push config files
+- [ ] Deploy to Railway
+- [ ] Set Root Directory to `server` (or use config files)
+- [ ] Add `YOUTUBE_API_KEY` to Railway
+- [ ] Update Vercel environment variables
+- [ ] Test deployment
 
----
-
-## 🔧 Troubleshooting
-
-### Deployment fails
-- Check Railway logs in dashboard
-- Verify `package.json` has `start` script
-- Ensure Node.js version compatible (16+)
-
-### CORS errors
-- Add your Railway URL to CORS origins in code
-- Redeploy after changes
-
-### Socket.IO not connecting
-- Check Railway URL is HTTPS (Railway provides this automatically)
-- Verify `NEXT_PUBLIC_SOCKET_URL` in Vercel matches Railway URL exactly
-
-### Environment variables not working
-- Double-check variable names in Railway dashboard
-- Redeploy after adding variables
-
----
-
-## 💰 Free Tier Limits
-
-Railway free tier includes:
-- 500 hours/month runtime
-- $5 credit/month
-- Shared resources
-
-This is plenty for development and moderate usage.
-
----
-
-## 🎉 Next Steps
-
-1. Commit and push code changes
-2. Deploy to Railway
-3. Update Vercel environment variables
-4. Test production deployment
-
-Your backend will be fully hosted and ready to scale!
+Your backend is now ready for Railway deployment! 🎉
