@@ -8,6 +8,10 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 
 const app = express();
+
+// Trust proxy for Railway deployment
+app.set("trust proxy", 1);
+
 app.use(cors({
     origin: [
         "http://localhost:3000",
