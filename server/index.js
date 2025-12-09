@@ -15,7 +15,8 @@ app.set("trust proxy", 1);
 app.use(cors({
     origin: [
         "http://localhost:3000",
-        "https://c2c-kappa.vercel.app"
+        "https://c2c-kappa.vercel.app",
+        "https://thorough-victory-production.up.railway.app"
     ],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -427,7 +428,8 @@ const io = new Server(server, {
     cors: {
         origin: [
             "http://localhost:3000",
-            "https://c2c-kappa.vercel.app"
+            "https://c2c-kappa.vercel.app",
+            "https://thorough-victory-production.up.railway.app"
         ],
         methods: ["GET", "POST"],
         credentials: true
