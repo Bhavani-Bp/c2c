@@ -3,10 +3,12 @@ const express = require('express');
 const axios = require('axios');
 const http = require('http');
 const { Server } = require('socket.io');
+const { PrismaClient } = require('@prisma/client');
 // const ytdl = require('@distube/ytdl-core');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 
+const prisma = new PrismaClient();
 const app = express();
 
 // Trust proxy for Railway deployment
@@ -50,11 +52,9 @@ app.use(express.json());
 
 console.log('✅ CORS configured for:', allowedOrigins);
 
-// In-memory storage for users (will be replaced with database later)
-// Structure: { userId: { userId, name, dob, passwordHash, email, isVerified, createdAt } }
-const users = {};
+// ✅ USER DATA NOW STORED IN POSTGRESQL DATABASE (migrated from in-memory)
 
-// Store email verification codes
+// Store email verification codes (temporary, will migrate to DB later)
 const emailVerificationCodes = {};
 
 // API Routes
@@ -72,6 +72,28 @@ app.get('/', (req, res) => {
     });
 });
 
+
+// ========== ADMIN ENDPOINTS ==========
+
+// Get all users (Admin endpoint)
+app.get('/api/admin/users', (req, res) => {
+    console.log('👥 ADMIN: Get all users');
+
+    const userList = Object.values(users).map(user => ({
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        dob: user.dob,
+        isVerified: user.isVerified,
+        createdAt: user.createdAt
+    }));
+
+    res.json({
+        success: true,
+        totalUsers: userList.length,
+        users: userList
+    });
+});
 
 // ========== YOUTUBE API ENDPOINTS ==========
 
@@ -137,13 +159,25 @@ app.post('/api/auth/signup', async (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Check if user already exists
-    if (users[userId]) {
-        console.log('❌ SIGNUP: User ID already exists');
-        return res.status(400).json({ error: 'User ID already exists' });
-    }
-
     try {
+        // Check if user already exists (by userId OR email)
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { userId: userId },
+                    { email: email }
+                ]
+            }
+        });
+
+        if (existingUser) {
+            console.log('❌ SIGNUP: User already exists');
+            if (existingUser.userId === userId) {
+                return res.status(400).json({ error: 'User ID already exists' });
+            }
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
         // Hash password
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(password, saltRounds);
@@ -158,25 +192,26 @@ app.post('/api/auth/signup', async (req, res) => {
             expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
         };
 
-        // Create user
-        users[userId] = {
-            userId,
-            name,
-            dob,
-            passwordHash,
-            email,
-            isVerified: false,
-            createdAt: new Date().toISOString()
-        };
+        // Create user in database
+        const user = await prisma.user.create({
+            data: {
+                userId,
+                name,
+                email,
+                passwordHash,
+                dateOfBirth: new Date(dob),
+                isVerified: false
+            }
+        });
 
         // Log verification code (in production, send email)
         console.log(`✅ SIGNUP SUCCESS - Verification code for ${email}: ${verificationCode}`);
-        console.log(`Total users: ${Object.keys(users).length}`);
+        console.log(`✅ User created in database: ${user.userId}`);
 
         res.json({
             success: true,
             message: 'Account created! Verification code sent to email (check console)',
-            userId
+            userId: user.userId
         });
     } catch (error) {
         console.error('❌ SIGNUP ERROR:', error);
@@ -195,14 +230,17 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(400).json({ error: 'User ID and password are required' });
     }
 
-    // Check if user exists
-    const user = users[userId];
-    if (!user) {
-        console.log('❌ LOGIN: User not found');
-        return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
     try {
+        // Find user in database
+        const user = await prisma.user.findUnique({
+            where: { userId }
+        });
+
+        if (!user) {
+            console.log('❌ LOGIN: User not found');
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
         // Compare password
         const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
@@ -229,7 +267,7 @@ app.post('/api/auth/login', async (req, res) => {
                 userId: user.userId,
                 name: user.name,
                 email: user.email,
-                dob: user.dob
+                dob: user.dateOfBirth
             }
         });
     } catch (error) {
@@ -239,7 +277,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Verify Email API
-app.post('/api/auth/verify-email', (req, res) => {
+app.post('/api/auth/verify-email', async (req, res) => {
     console.log('📧 VERIFY EMAIL API CALLED:', { email: req.body.email, code: req.body.code });
     const { email, code } = req.body;
 
@@ -270,9 +308,16 @@ app.post('/api/auth/verify-email', (req, res) => {
     }
 
     // Mark user as verified
-    const user = users[verification.userId];
+    const user = await prisma.user.findUnique({
+        where: { userId: verification.userId }
+    });
+
     if (user) {
-        user.isVerified = true;
+        await prisma.user.update({
+            where: { userId: verification.userId },
+            data: { isVerified: true }
+        });
+
         delete emailVerificationCodes[email];
         console.log('✅ EMAIL VERIFIED:', { userId: user.userId, email });
 
@@ -283,7 +328,7 @@ app.post('/api/auth/verify-email', (req, res) => {
                 userId: user.userId,
                 name: user.name,
                 email: user.email,
-                dob: user.dob
+                dob: user.dateOfBirth
             }
         });
     } else {
@@ -703,6 +748,18 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     console.log(`SERVER RUNNING ON PORT ${PORT}`);
+    console.log(`✅ Database connected (PostgreSQL via Prisma)`);
+});
+
+// Graceful shutdown - Close Prisma connection
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    server.close(() => {
+        console.log('HTTP server closed');
+    });
+    await prisma.$disconnect();
+    console.log('✅ Database connection closed');
+    process.exit(0);
 });
