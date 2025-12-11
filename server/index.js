@@ -341,7 +341,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
 
 
 // Create Room API
-app.post('/api/create-room', (req, res) => {
+app.post('/api/create-room', async (req, res) => {
     console.log('🚀 CREATE ROOM API CALLED:', { creatorName: req.body.creatorName, creatorEmail: req.body.creatorEmail });
     const { creatorName, creatorEmail } = req.body;
 
@@ -350,29 +350,49 @@ app.post('/api/create-room', (req, res) => {
         return res.status(400).json({ error: 'Name and email are required' });
     }
 
-    // Generate unique room ID
-    const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    try {
+        // Generate unique room ID
+        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Create room
-    rooms[roomId] = {
-        users: [],
-        videoState: {
-            url: '',
-            isPlaying: false,
-            currentTime: 0,
-            lastUpdated: Date.now()
-        },
-        createdBy: creatorEmail,
-        createdAt: new Date().toISOString()
-    };
+        // Find or create user (needed for foreign key)
+        let user = await prisma.user.findUnique({ where: { email: creatorEmail } });
 
-    console.log('✅ CREATE ROOM SUCCESS:', { roomId, creatorName, creatorEmail });
-    console.log('Available rooms now:', Object.keys(rooms));
-    res.json({
-        success: true,
-        roomId,
-        message: 'Room created successfully'
-    });
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    userId: `temp_${Date.now()}`,
+                    name: creatorName,
+                    email: creatorEmail,
+                    passwordHash: '',
+                    isVerified: false
+                }
+            });
+        }
+
+        // Create room in database
+        const room = await prisma.room.create({
+            data: {
+                roomId,
+                hostUserId: user.userId,
+                isPublic: false,
+                maxUsers: 10
+            }
+        });
+
+        // Also maintain in-memory for socket.io (temporary)
+        rooms[roomId] = {
+            users: [],
+            videoState: { url: '', isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
+            createdBy: creatorEmail,
+            createdAt: new Date().toISOString()
+        };
+
+        console.log('✅ CREATE ROOM SUCCESS - DB:', room.roomId);
+        res.json({ success: true, roomId, message: 'Room created successfully' });
+    } catch (error) {
+        console.error('❌ CREATE ROOM ERROR:', error);
+        res.status(500).json({ error: 'Failed to create room' });
+    }
 });
 
 // Send Verification Code API
@@ -446,7 +466,7 @@ app.post('/api/verify-code', (req, res) => {
 });
 
 // Join Room API (without verification)
-app.post('/api/join-room', (req, res) => {
+app.post('/api/join-room', async (req, res) => {
     console.log('🚪 JOIN ROOM API CALLED:', { name: req.body.name, email: req.body.email, roomId: req.body.roomId });
     const { name, email, roomId } = req.body;
 
@@ -455,24 +475,71 @@ app.post('/api/join-room', (req, res) => {
         return res.status(400).json({ error: 'Name, email, and room ID are required' });
     }
 
-    if (!rooms[roomId]) {
-        console.log('❌ JOIN ROOM: Room not found:', roomId);
-        console.log('Available rooms:', Object.keys(rooms));
-        console.log('Total rooms:', Object.keys(rooms).length);
-        return res.status(404).json({
-            error: 'Room not found. Please check the Room ID.',
-            availableRooms: Object.keys(rooms).length,
-            hint: 'Make sure you\'re using the exact Room ID shared by the room creator'
+    try {
+        // Check if room exists in database
+        const room = await prisma.room.findUnique({
+            where: { roomId }
         });
-    }
 
-    console.log('✅ JOIN ROOM SUCCESS:', { name, email, roomId });
-    console.log('Room exists with users:', rooms[roomId].users.length);
-    res.json({
-        success: true,
-        roomId,
-        message: 'Successfully joined room'
-    });
+        if (!room) {
+            console.log('❌ JOIN ROOM: Room not found in database');
+            return res.status(404).json({
+                error: 'Room not found. Please check the Room ID.',
+                hint: 'Make sure you\'re using the exact Room ID shared by the room creator'
+            });
+        }
+
+        // Find or create user
+        let user = await prisma.user.findUnique({ where: { email } });
+
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    userId: `temp_${Date.now()}`,
+                    name,
+                    email,
+                    passwordHash: '',
+                    isVerified: false
+                }
+            });
+        }
+
+        // Add participant to database
+        await prisma.roomParticipant.upsert({
+            where: {
+                roomId_userId: {
+                    roomId,
+                    userId: user.userId
+                }
+            },
+            update: { isActive: true },
+            create: {
+                roomId,
+                userId: user.userId,
+                isActive: true
+            }
+        });
+
+        // Also maintain in-memory for socket.io (temporary)
+        if (!rooms[roomId]) {
+            rooms[roomId] = {
+                users: [],
+                videoState: { url: '', isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
+                createdBy: room.hostUserId,
+                createdAt: room.createdAt.toISOString()
+            };
+        }
+
+        console.log('✅ JOIN ROOM SUCCESS - DB:', { roomId, userName: name });
+        res.json({
+            success: true,
+            roomId,
+            message: 'Successfully joined room'
+        });
+    } catch (error) {
+        console.error('❌ JOIN ROOM ERROR:', error);
+        res.status(500).json({ error: 'Failed to join room' });
+    }
 });
 
 // Get Room Info API
