@@ -54,7 +54,9 @@ async function sendVerificationEmail(email, code, name) {
         return { success: true, messageId: info.messageId };
     } catch (error) {
         console.error('❌ Email send error:', error.message);
-        return { success: false, error: error.message };
+        console.error('Full error details:', error);
+        // Throw error so calling code knows email failed
+        throw new Error(`Failed to send verification email: ${error.message}`);
     }
 }
 
@@ -92,12 +94,13 @@ async function sendPasswordResetEmail(email, resetToken, name) {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Password reset email sent to ${email}`);
-        return { success: true };
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`✅ Password reset email sent to ${email} (Message ID: ${info.messageId})`);
+        return { success: true, messageId: info.messageId };
     } catch (error) {
-        console.error('❌ Password reset email error:', error);
-        return { success: false, error: error.message };
+        console.error('❌ Password reset email error:', error.message);
+        console.error('Full error details:', error);
+        throw new Error(`Failed to send password reset email: ${error.message}`);
     }
 }
 
