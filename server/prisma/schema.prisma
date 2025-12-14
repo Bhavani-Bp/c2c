@@ -33,6 +33,7 @@ model User {
   sentInvites        RoomInvite[]      @relation("InviteSender")
   receivedInvites    RoomInvite[]      @relation("InviteReceiver")
   notifications      Notification[]
+  messages           Message[]         // NEW - Chat messages
 
   @@index([email])
   @@index([userId])
@@ -51,6 +52,7 @@ model Room {
   currentVideoUrl String?
   isPlaying    Boolean   @default(false)
   currentTime  Float     @default(0)
+  lastActivityAt DateTime @default(now()) // Track last activity for auto-cleanup
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -58,10 +60,12 @@ model Room {
   host         User              @relation("RoomHost", fields: [hostUserId], references: [userId], onDelete: Cascade)
   participants RoomParticipant[]
   invites      RoomInvite[]
+  messages     Message[]         // NEW - Chat messages
 
   @@index([roomId])
   @@index([isPublic])
   @@index([hostUserId])
+  @@index([lastActivityAt]) // Index for cleanup queries
 }
 
 // ========== ROOM PARTICIPANTS MODEL ==========
@@ -158,4 +162,20 @@ enum NotificationType {
   FRIEND_REJECTED
   ROOM_INVITE
   SYSTEM
+}
+
+// ========== CHAT MESSAGES MODEL ==========
+model Message {
+  id        Int      @id @default(autoincrement())
+  roomId    String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  room Room @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@index([userId])
 }

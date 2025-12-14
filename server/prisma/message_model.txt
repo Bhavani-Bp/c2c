@@ -1,0 +1,15 @@
+// ========== CHAT MESSAGES MODEL ==========
+model Message {
+  id        Int      @id @default(autoincrement())
+  roomId    String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  room Room @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@index([userId])
+}

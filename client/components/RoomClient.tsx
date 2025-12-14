@@ -3,6 +3,7 @@
 export const unstable_noStore = true;
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Socket } from "socket.io-client";
 import { Send, MessageSquare, User, Link as LinkIcon, Search, Play, List, Plus, Trash2, History } from "lucide-react";
 import PlayerComponent from "./PlayerComponent";
@@ -27,7 +28,9 @@ interface RoomClientProps {
     userName: string;
 }
 
+
 export default function RoomClient({ roomId, userName }: RoomClientProps) {
+    const router = useRouter();
     const [socket, setSocket] = useState<Socket | null>(null);
     const [currentMessage, setCurrentMessage] = useState("");
     const [messageList, setMessageList] = useState<Message[]>([]);
@@ -45,9 +48,23 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
     const [showPlaylist, setShowPlaylist] = useState(false);
     const [recentVideos, setRecentVideos] = useState<RecentVideo[]>([]);
     const [showRecent, setShowRecent] = useState(false);
+    const [isAuthorized, setIsAuthorized] = useState(true); // Start as true to prevent flash
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Check authentication on mount
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+
+            if (!token || !user) {
+                // Redirect to dashboard if not logged in
+                setIsAuthorized(false);
+                router.push('/dashboard?error=unauthorized');
+            }
+        }
+    }, [router]);
 
     useEffect(() => {
         // Initialize Socket Connection with global socket instance
