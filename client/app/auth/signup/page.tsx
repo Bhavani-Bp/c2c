@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { User, Lock, Mail, Calendar, CheckCircle } from "lucide-react";
 import TubesBackground from "@/components/webgl/TubesBackground";
 
-export default function SignupPage() {
+function SignupPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [step, setStep] = useState<"signup" | "verify">("signup");
@@ -312,5 +312,13 @@ export default function SignupPage() {
                 </div>
             </main>
         </>
+    );
+}
+
+export default function SignupPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#0A0A0A] text-[#F8F6F0]">Loading...</div>}>
+            <SignupPageContent />
+        </Suspense>
     );
 }
