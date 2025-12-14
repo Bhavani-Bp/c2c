@@ -56,7 +56,7 @@ class AuthService {
         // Send verification email
         await emailService.sendVerificationEmail(email, verificationCode);
 
-        console.log(`✅ SIGNUP SUCCESS - Verification code for ${email}: ${verificationCode}`);
+        console.log(`✅ SIGNUP SUCCESS - Verification email sent to ${email}`);
         console.log('⚠️  User must verify email before receiving access token');
 
         return {

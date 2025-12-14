@@ -1,14 +1,14 @@
-const transporter = require('../config/email');
+const resend = require('../config/email');
 
 /**
- * Send verification email with 6-digit code
+ * Send verification email with 6-digit code using Resend API
  * @param {string} email - Recipient email address
  * @param {string} code - 6-digit verification code
- * @param {string} name - User's name
+ * @param {string} name - User's name (optional)
  */
-async function sendVerificationEmail(email, code, name) {
-    const mailOptions = {
-        from: process.env.EMAIL_FROM || 'Connect2Connect <noreply@connect2connect.com>',
+async function sendVerificationEmail(email, code, name = 'User') {
+    const emailOptions = {
+        from: process.env.EMAIL_FROM || 'Connect2Connect <onboarding@resend.dev>',
         to: email,
         subject: 'Verify Your Email - Connect2Connect',
         html: `
@@ -49,28 +49,27 @@ async function sendVerificationEmail(email, code, name) {
     };
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Verification email sent to ${email} (Message ID: ${info.messageId})`);
-        return { success: true, messageId: info.messageId };
+        const data = await resend.emails.send(emailOptions);
+        console.log(`✅ Verification email sent to ${email} (ID: ${data.id})`);
+        return { success: true, messageId: data.id };
     } catch (error) {
         console.error('❌ Email send error:', error.message);
         console.error('Full error details:', error);
-        // Throw error so calling code knows email failed
         throw new Error(`Failed to send verification email: ${error.message}`);
     }
 }
 
 /**
- * Send password reset email
+ * Send password reset email using Resend API
  * @param {string} email - Recipient email address
  * @param {string} resetToken - Password reset token
- * @param {string} name - User's name
+ * @param {string} name - User's name (optional)
  */
-async function sendPasswordResetEmail(email, resetToken, name) {
+async function sendPasswordResetEmail(email, resetToken, name = 'User') {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-    const mailOptions = {
-        from: process.env.EMAIL_FROM || 'Connect2Connect <noreply@connect2connect.com>',
+    const emailOptions = {
+        from: process.env.EMAIL_FROM || 'Connect2Connect <onboarding@resend.dev>',
         to: email,
         subject: 'Reset Your Password - Connect2Connect',
         html: `
@@ -94,9 +93,9 @@ async function sendPasswordResetEmail(email, resetToken, name) {
     };
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Password reset email sent to ${email} (Message ID: ${info.messageId})`);
-        return { success: true, messageId: info.messageId };
+        const data = await resend.emails.send(emailOptions);
+        console.log(`✅ Password reset email sent to ${email} (ID: ${data.id})`);
+        return { success: true, messageId: data.id };
     } catch (error) {
         console.error('❌ Password reset email error:', error.message);
         console.error('Full error details:', error);

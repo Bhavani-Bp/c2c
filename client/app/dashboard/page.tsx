@@ -6,7 +6,7 @@ import { Plus, DoorOpen, User, LogOut } from "lucide-react";
 import RoomCard from "./components/RoomCard";
 import NotificationBell from "./components/NotificationBell";
 import TubesBackground from "@/components/webgl/TubesBackground";
-import WheelPicker from "@/components/WheelPicker";
+import MaxUsersSelector from "@/components/MaxUsersSelector";
 
 interface Room {
     roomId: string;
@@ -238,7 +238,7 @@ export default function Dashboard() {
                         </div>
 
                         <div
-                            className="bg-[#0A0A0A]/30 backdrop-blur-2xl border-2 border-[#F8F6F0]/20 rounded-2xl p-8 w-full max-w-md relative z-10 shadow-[0_0_50px_rgba(65,105,225,0.3)]"
+                            className="bg-[#0A0A0A]/30 backdrop-blur-2xl border-2 border-[#F8F6F0]/20 rounded-2xl p-8 w-full max-w-sm relative z-10 shadow-[0_0_50px_rgba(65,105,225,0.3)]"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-[#F8F6F0] to-[#4169E1] bg-clip-text text-transparent">Create New Room</h2>
@@ -263,9 +263,8 @@ export default function Dashboard() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-center">Max Users</label>
-                                    <WheelPicker
-                                        options={[5, 10, 20, 50]}
+                                    <label className="block text-sm font-medium mb-3">Max Users</label>
+                                    <MaxUsersSelector
                                         value={createRoomData.maxUsers}
                                         onChange={(value) => setCreateRoomData({ ...createRoomData, maxUsers: value })}
                                     />
