@@ -14,7 +14,7 @@ export default function WheelPicker({ options, value, onChange }: WheelPickerPro
     const [startY, setStartY] = useState(0);
     const [scrollOffset, setScrollOffset] = useState(0);
     const [velocity, setVelocity] = useState(0);
-    const animationFrameRef = useRef<number>();
+    const animationFrameRef = useRef<number | undefined>(undefined);
 
     const ITEM_HEIGHT = 48; // Height of each item in pixels
     const VISIBLE_ITEMS = 5; // Number of visible items
