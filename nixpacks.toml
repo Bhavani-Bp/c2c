@@ -4,9 +4,8 @@ nixPkgs = ["nodejs"]
 [phases.install]
 cmds = [
   "cd server && npm install",
-  "cd server && npx prisma generate",
-  "cd server && npx prisma migrate deploy"
+  "cd server && npx prisma generate"
 ]
 
 [start]
-cmd = "cd server && node index.js"
+cmd = "cd server && npx prisma migrate deploy && node index.js"
