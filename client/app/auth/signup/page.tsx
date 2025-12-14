@@ -6,6 +6,9 @@ import Link from "next/link";
 import { User, Lock, Mail, Calendar, CheckCircle } from "lucide-react";
 import TubesBackground from "@/components/webgl/TubesBackground";
 
+// Force dynamic rendering to avoid static generation issues with useSearchParams
+export const dynamic = 'force-dynamic';
+
 function SignupPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
