@@ -311,8 +311,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
 
     return (
         <div className="flex flex-col lg:flex-row h-screen bg-black text-stone-50 overflow-hidden font-sans">
-            {/* Left Side: Video Player Area */}
-            <div className="flex-1 flex flex-col bg-black border-r border-stone-800 relative">
+            {/* Left Side: Video Player Area - FIXED HEIGHT ON MOBILE */}
+            <div className="flex-none lg:flex-1 h-[45vh] lg:h-screen flex flex-col bg-black lg:border-r border-stone-800 relative">
                 {/* URL Input Bar */}
                 <div className="p-4 bg-[#0a0a0a] border-b border-stone-800 flex flex-col gap-2 relative z-50">
                     <div className="flex gap-2 items-center">
@@ -571,8 +571,8 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
                 </div>
             </div>
 
-            {/* Right Side: Chat UI */}
-            <div className="w-full lg:w-96 flex flex-col bg-black border-t lg:border-t-0 lg:border-l border-stone-800 shadow-2xl">
+            {/* Right Side: Chat */}
+            <div className="flex-1 lg:flex-none lg:w-96 h-[55vh] lg:h-screen flex flex-col bg-black border-t lg:border-t-0 lg:border-l border-stone-800 shadow-2xl">
                 {/* Chat Header */}
                 <div className="p-4 border-b border-stone-800 bg-[#0a0a0a] backdrop-blur-md flex items-center gap-3">
                     <div className="p-2 bg-blue-500/10 rounded-lg">
