@@ -58,13 +58,14 @@ export default function RoomClient({ roomId, userName }: RoomClientProps) {
             const token = localStorage.getItem('token');
             const user = localStorage.getItem('user');
 
-            if (!token || !user) {
-                // Redirect to dashboard if not logged in
+            // Allow guests (with userName) OR authenticated users (with token)
+            if (!token && !user && !userName) {
+                // Only redirect if no token AND no userName (true unauthorized access)
                 setIsAuthorized(false);
                 router.push('/dashboard?error=unauthorized');
             }
         }
-    }, [router]);
+    }, [router, userName]);
 
     useEffect(() => {
         // Initialize Socket Connection with global socket instance
