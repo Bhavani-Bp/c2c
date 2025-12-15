@@ -81,6 +81,9 @@ const io = new Server(server, {
 const rooms = {};
 const verificationCodes = {};
 
+// Make Socket.IO available to controllers
+app.set('io', io);
+
 io.on('connection', (socket) => {
     console.log(`✅ User Connected: ${socket.id}`);
 
@@ -97,8 +100,8 @@ io.on('connection', (socket) => {
     });
 
     // Join Room Event
-    socket.on('join_room', (data) => {
-        const { room, name } = data;
+    socket.on('join_room', async (data) => {
+        const { room, name, userId } = data;
         socket.join(room);
 
         // Initialize room if it doesn't exist
@@ -116,11 +119,46 @@ io.on('connection', (socket) => {
         }
 
         // Add user to room
-        const user = { id: socket.id, name };
+        const user = { id: socket.id, name, userId };
         rooms[room].users.push(user);
 
         console.log(`👤 User ${name} (${socket.id}) joined room: ${room}`);
         console.log(`📊 Room ${room} now has ${rooms[room].users.length} users`);
+
+        // ✨ Load and send message history from database
+        try {
+            const messageHistory = await prisma.message.findMany({
+                where: { roomId: room },
+                include: {
+                    user: {
+                        select: {
+                            name: true,
+                            avatarUrl: true,
+                            userId: true
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'asc' },
+                take: 100 // Last 100 messages
+            });
+
+            // Send message history to the user who just joined
+            if (messageHistory.length > 0) {
+                socket.emit('message_history', {
+                    messages: messageHistory.map(msg => ({
+                        id: msg.id,
+                        message: msg.content,
+                        username: msg.user?.name || 'Guest',
+                        time: new Date(msg.createdAt).toLocaleTimeString(),
+                        createdAt: msg.createdAt
+                    }))
+                });
+
+                console.log(`📜 Sent ${messageHistory.length} previous messages to ${name}`);
+            }
+        } catch (error) {
+            console.error('❌ Failed to load message history:', error);
+        }
 
         // Send current video state to the new user
         if (rooms[room].videoState.url) {
@@ -150,8 +188,43 @@ io.on('connection', (socket) => {
     });
 
     // Send Message Event
-    socket.on('send_message', (data) => {
-        socket.to(data.room).emit('receive_message', data);
+    socket.on('send_message', async (data) => {
+        const { room, message, username, time, userId } = data;
+
+        try {
+            // Save message to database
+            const savedMessage = await prisma.message.create({
+                data: {
+                    roomId: room,
+                    userId: userId || 'guest', // Use 'guest' for non-registered users
+                    content: message
+                },
+                include: {
+                    user: {
+                        select: {
+                            name: true,
+                            avatarUrl: true,
+                            userId: true
+                        }
+                    }
+                }
+            });
+
+            // Broadcast to all users in room (including sender via io.to)
+            io.to(room).emit('receive_message', {
+                id: savedMessage.id,
+                message: savedMessage.content,
+                username: username || savedMessage.user?.name || 'Guest',
+                time: time || new Date().toLocaleTimeString(),
+                createdAt: savedMessage.createdAt
+            });
+
+            console.log(`💬 Message saved to DB: Room ${room} - ${username}: "${message.substring(0, 50)}..."`);
+        } catch (error) {
+            console.error('❌ Failed to save message:', error);
+            // Still broadcast even if DB save fails
+            socket.to(room).emit('receive_message', data);
+        }
     });
 
     // Video Sync Events

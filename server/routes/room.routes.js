@@ -229,4 +229,108 @@ router.post('/join-room', roomController.joinRoom);
  */
 router.post('/delete-room/:roomId', authenticateToken, roomController.deleteRoom);
 
+/**
+ * @swagger
+ * /api/rooms/{roomId}/messages:
+ *   get:
+ *     summary: Get message history for a room
+ *     tags: [Rooms]
+ *     parameters:
+ *       - in: path
+ *         name: roomId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room ID
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Number of messages to fetch
+ *       - in: query
+ *         name: before
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Fetch messages before this timestamp (for pagination)
+ *     responses:
+ *       200:
+ *         description: Message history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     messages:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           content:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                     count:
+ *                       type: integer
+ *       404:
+ *         description: Room not found
+ */
+router.get('/:roomId/messages', async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const { limit = 100, before } = req.query;
+        const prisma = require('../config/database');
+
+        const messages = await prisma.message.findMany({
+            where: {
+                roomId,
+                ...(before && { createdAt: { lt: new Date(before) } })
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        avatarUrl: true,
+                        userId: true
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: parseInt(limit)
+        });
+
+        res.json({
+            success: true,
+            data: {
+                messages: messages.reverse().map(msg => ({
+                    id: msg.id,
+                    content: msg.content,
+                    username: msg.user?.name || 'Guest',
+                    avatarUrl: msg.user?.avatarUrl,
+                    userId: msg.userId,
+                    createdAt: msg.createdAt
+                })),
+                count: messages.length
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

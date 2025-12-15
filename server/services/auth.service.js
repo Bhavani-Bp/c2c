@@ -1,7 +1,10 @@
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const prisma = require('../config/database');
 const emailService = require('./email.service');
+const { generateUserId } = require('../utils/stringUtils');
+const { generateOTP, createOTPVerification, verifyOTP } = require('../utils/otpUtils');
+const { generateToken } = require('../utils/tokenUtils');
+const { generateSearchName } = require('../utils/searchUtils');
 
 // In-memory store for verification codes (in production, use Redis)
 const emailVerificationCodes = {};
@@ -23,7 +26,7 @@ class AuthService {
         }
 
         // Generate unique userId
-        const userId = name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000);
+        const userId = generateUserId(name);
 
         // Hash password
         const saltRounds = 10;
@@ -36,6 +39,7 @@ class AuthService {
                 name,
                 email,
                 passwordHash,
+                searchName: generateSearchName(name), // For optimized search
                 dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
                 isVerified: false
             }
@@ -44,13 +48,13 @@ class AuthService {
         console.log('✅ User created in database:', userId);
 
         // Generate 6-digit verification code
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationCode = generateOTP();
 
         // Store with expiration (10 minutes)
+        const otpVerification = createOTPVerification(verificationCode, 10);
         emailVerificationCodes[email] = {
-            code: verificationCode,
-            userId: user.userId,
-            expiresAt: Date.now() + (10 * 60 * 1000)
+            ...otpVerification,
+            userId: user.userId
         };
 
         // Send verification email
@@ -78,20 +82,15 @@ class AuthService {
 
         const verification = emailVerificationCodes[email];
 
-        if (!verification) {
-            console.log('❌ VERIFY EMAIL: No verification code found');
-            throw new Error('Invalid or expired verification code');
-        }
+        // Use utility function to verify OTP
+        const otpCheck = verifyOTP(verification, code);
 
-        if (verification.expiresAt < Date.now()) {
-            delete emailVerificationCodes[email];
-            console.log('❌ VERIFY EMAIL: Code expired');
-            throw new Error('Verification code expired');
-        }
-
-        if (verification.code !== code) {
-            console.log('❌ VERIFY EMAIL: Code mismatch');
-            throw new Error('Invalid verification code');
+        if (!otpCheck.valid) {
+            if (otpCheck.reason === 'Verification code expired') {
+                delete emailVerificationCodes[email];
+            }
+            console.log('❌ VERIFY EMAIL:', otpCheck.reason);
+            throw new Error(otpCheck.reason);
         }
 
         // Update user's verified status
@@ -115,11 +114,7 @@ class AuthService {
         console.log('✅ EMAIL VERIFIED:', { userId: user.userId, email });
 
         // Generate JWT token AFTER verification
-        const token = jwt.sign(
-            { userId: user.userId, email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        const token = generateToken({ userId: user.userId, email: user.email });
 
         console.log('✅ JWT token issued after email verification');
 
@@ -158,11 +153,7 @@ class AuthService {
         }
 
         // Generate JWT token
-        const token = jwt.sign(
-            { userId: user.userId, email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        const token = generateToken({ userId: user.userId, email: user.email });
 
         console.log('✅ LOGIN SUCCESS:', { email, name: user.name });
 
