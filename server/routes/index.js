@@ -11,6 +11,7 @@ router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/friends', friendRoutes);
+router.use('/search', require('./search.routes'));
 
 // Legacy root-level endpoints (for backward compatibility)
 router.use('/', roomRoutes); // Handles /api/create-room and /api/join-room

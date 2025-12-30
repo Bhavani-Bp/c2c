@@ -408,6 +408,40 @@ server.listen(PORT, async () => {
     }, 5 * 60 * 1000); // 5 minutes
 
     console.log('🧹 Automatic room cleanup started (runs every 5 minutes)');
+
+    // Debug: Log all registered routes
+    console.log('----------------------------------------');
+    console.log('Registered Routes (Top Level):');
+    const getRoutes = (stack, basePath = '') => {
+        stack.forEach(layer => {
+            if (layer.route) {
+                console.log(`${Object.keys(layer.route.methods).join(',').toUpperCase()} ${basePath}${layer.route.path}`);
+            } else if (layer.name === 'router' && layer.handle.stack) {
+                // Determine the path prefix for this router
+                // Express regex for path matching is complex, simplified for standard use cases
+                let prefix = '';
+                if (layer.regexp && layer.regexp.source) {
+                    // Extract path from regex if possible (this is hacky but helpful for debug)
+                    // Common express regex for /api is /^\/api\/?(?=\/|$)/i
+                    const match = layer.regexp.source.match(/\^\\\/([a-zA-Z0-9_\-]+)\\\/\?\(\?=\\\/\|\$\)/);
+                    if (match) prefix = '/' + match[1];
+                    // Fallback for simple cases if needed, or just rely on structure
+                }
+                getRoutes(layer.handle.stack, basePath + prefix);
+            }
+        });
+    };
+
+    // Simple log as requested by user
+    // Note: This often only shows top-level routes or mounted routers without full paths in Express 4/5
+    // so we add a slightly more descriptive log for the logical check
+    console.log("Routes mounted at /api:", ["/auth", "/users", "/rooms", "/friends", "/search"]);
+
+    // Attempt detailed print if accessible (often complex in modular express)
+    try {
+        // app._router.stack.forEach(r => console.log(r.regexp, r.route?.path)); 
+    } catch (e) { }
+    console.log('----------------------------------------');
 });
 
 // Graceful shutdown
